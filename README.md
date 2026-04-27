@@ -11,8 +11,8 @@
 
 * Chahat (2210990231)
 * Bhomya Sharma (2210990224)
-* Prerana Thakur (2210990221)
-* Noovi Bedi (2210990204)
+* Prerana Thakur (2210992085)
+* Noovi Bedi (2210992004)
 
 **Mentor:** Ashish Kumar
 
