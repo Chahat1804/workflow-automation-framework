@@ -1,0 +1,788 @@
+{
+  "name": "Engineering Dashboard with Git Commits v4",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 14,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "43260499-568d-4f44-84ac-6ffca2f45d62",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -896,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1VBx03KMUVJWodBtqNOBJ0uKIwMRdo3kvsJol83rknyY",
+          "mode": "list",
+          "cachedResultName": "Roadmap",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1VBx03KMUVJWodBtqNOBJ0uKIwMRdo3kvsJol83rknyY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1117841903,
+          "mode": "list",
+          "cachedResultName": "Roadmap",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1VBx03KMUVJWodBtqNOBJ0uKIwMRdo3kvsJol83rknyY/edit#gid=1117841903"
+        },
+        "options": {}
+      },
+      "id": "8490db4b-6a21-4add-8db5-467411cb9435",
+      "name": "Read Roadmap",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IRjNpZhnnFvdI1Uf",
+          "name": "Google Sheets Bhomya"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "id": "9d2ed27b-f66b-438f-9a50-efb8f59360e7",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        656,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ── Normalise one Jira item ──────────────────────────────────────────\nfunction normalise(r) {\n  const f = r.fields || {};\n  const key      = r.key || '';\n  const summary  = f.summary || '';\n  const created  = f.created || '';\n  const status   = f.status?.name   || '';\n  const priority = f.priority?.name || '';\n  const assignee = f.assignee?.displayName || 'Unassigned';\n  const module_  = f.customfield_10196?.value || f.issuetype?.name || 'Other';\n  let team = '', commitDate = '';\n  for (const [ck, cv] of Object.entries(f)) {\n    if (!ck.startsWith('customfield_')) continue;\n    if (!team) {\n      if (cv && typeof cv === 'object' && !Array.isArray(cv) && cv.name && !cv.value) team = cv.name;\n      else if (Array.isArray(cv) && cv[0]?.name) team = cv[0].name;\n    }\n    if (!commitDate && typeof cv === 'string' && /^\\d{4}-\\d{2}-\\d{2}/.test(cv)) commitDate = cv;\n  }\n  return { key, summary, status, priority, assignee, created, module: module_, team: team || 'Unassigned', commitDate, _type: r._type };\n}\n\n// Merge has 5 inputs: 0=Roadmap, 1=bugs, 2=closed_bugs, 3=features, 4=git\nconst allItems = $input.all().map(i => i.json);\n\nconst rawBugs   = allItems.filter(r => r._type === 'bug');\nconst rawClosed = allItems.filter(r => r._type === 'closed_bug');\nconst rawFeats  = allItems.filter(r => r._type === 'feature');\nconst gitItem   = allItems.find(r => r._type === 'git_commits') || null;\n\nconst commitsByTicket    = gitItem?.commitsByTicket   || [];\nconst allCommitsToday    = gitItem?.allCommitsToday   || [];\nconst devCommitSummary   = gitItem?.devCommitSummary  || [];\nconst totalCommits       = gitItem?.totalCommits      || 0;\nconst totalTicketsTouched = gitItem?.totalTicketsTouched || 0;\nconst totalReposTouched  = gitItem?.totalReposTouched || 0;\nconst reposTouched       = gitItem?.reposTouched      || [];\nconst searchTotal        = gitItem?.searchTotal       || 0;\n\nconst bugs   = rawBugs.map(normalise).filter(r => r.key);\nconst closed = rawClosed.map(normalise).filter(r => r.key);\nconst feats  = rawFeats.map(normalise).filter(r => r.key);\nconst allRoadmap = allItems.filter(r => r.Feature && r.Status);\nconst now = new Date();\n\n// Bug metrics\nconst closedStatuses = ['Closed','Done','Cancelled','Customer Validation','Duplicate','Do not use','Waiting for customer','On Hold','Pending'];\nconst openBugs     = bugs.filter(r => r.status && !closedStatuses.includes(r.status));\nconst criticalBugs = openBugs.filter(r => ['Critical','Highest'].includes(r.priority)).length;\nconst highBugs     = openBugs.filter(r => r.priority === 'High').length;\nconst unassigned   = openBugs.filter(r => !r.assignee || r.assignee === 'Unassigned').length;\nconst closedRecent = closed.length;\nconst noDate       = openBugs.filter(r => !r.commitDate).length;\nconst teamCounts = {}, moduleCounts = {};\nopenBugs.forEach(r => {\n  teamCounts[r.team]     = (teamCounts[r.team]     || 0) + 1;\n  moduleCounts[r.module] = (moduleCounts[r.module] || 0) + 1;\n});\nconst overdueTickets = openBugs\n  .filter(r => r.commitDate && new Date(r.commitDate) < now)\n  .slice(0, 5)\n  .map(r => ({ key: r.key, summary: r.summary.substring(0, 52), priority: r.priority, team: r.team, assignee: r.assignee, dueDate: r.commitDate }));\n\n// Feature metrics\nconst openFeatures       = feats.filter(r => r.status && !['Done','Cancelled','Closed'].includes(r.status));\nconst critFeatures       = openFeatures.filter(r => ['Critical','Highest'].includes(r.priority)).length;\nconst unassignedFeatures = openFeatures.filter(r => !r.assignee || r.assignee === 'Unassigned').length;\nconst inProgress         = openFeatures.filter(r => ['Dev In Progress','Testing / QA validation','Awaiting from Partnership','Ready for Development','In Progress'].includes(r.status)).length;\nconst toDo               = openFeatures.filter(r => ['Scoped(To Do)','Feasibility Analysis','Delivery Planning/ Discussion','To Do','Open','Backlog'].includes(r.status)).length;\nconst parked             = openFeatures.filter(r => ['Parking lot','On Hold','Parked'].includes(r.status)).length;\nconst featTeamCounts = {};\nopenFeatures.forEach(r => { featTeamCounts[r.team] = (featTeamCounts[r.team] || 0) + 1; });\nconst escalate = openFeatures\n  .filter(r => ['Critical','Highest'].includes(r.priority) && r.created && (now - new Date(r.created)) / 86400000 > 100)\n  .slice(0, 5)\n  .map(r => ({ key: r.key, summary: r.summary.substring(0, 55), team: r.team, assignee: r.assignee, age: Math.floor((now - new Date(r.created)) / 86400000) }));\n\n// Roadmap metrics\nconst validRoadmap = allRoadmap.filter(r => String(r.Feature).trim() !== '');\nconst rdDone   = validRoadmap.filter(r => r.Status === 'Done').length;\nconst rdInProg = validRoadmap.filter(r => r.Status === 'In Progress').length;\nconst rdToDo   = validRoadmap.filter(r => r.Status === 'To Do').length;\nconst roadmapRows = validRoadmap.slice(0, 10).map(r => ({ feature: r.Feature, status: r.Status, owner: r.Product || '', fn: r.Function || '', team: r.Team || '' }));\n\n// Per-developer breakdown (Jira + Git merged)\nconst devMap = {};\nconst addDev = (assignee, type) => {\n  if (!assignee || assignee === 'Unassigned') return;\n  if (!devMap[assignee]) devMap[assignee] = { name: assignee, bugs_open: 0, bugs_fixed: 0, features_open: 0 };\n  devMap[assignee][type]++;\n};\nopenBugs.forEach(r => addDev(r.assignee, 'bugs_open'));\nclosed.forEach(r   => addDev(r.assignee, 'bugs_fixed'));\nopenFeatures.forEach(r => addDev(r.assignee, 'features_open'));\ndevCommitSummary.forEach(gitDev => {\n  const matchName = gitDev.name.toLowerCase();\n  let jiraKey = Object.keys(devMap).find(k =>\n    k.toLowerCase() === matchName || k.toLowerCase().includes(matchName) || matchName.includes(k.toLowerCase())\n  );\n  if (!jiraKey) {\n    jiraKey = gitDev.name;\n    devMap[jiraKey] = { name: gitDev.name, bugs_open: 0, bugs_fixed: 0, features_open: 0 };\n  }\n  devMap[jiraKey].commits_today   = gitDev.commitCount;\n  devMap[jiraKey].tickets_touched = gitDev.uniqueTickets;\n  devMap[jiraKey].ticketDetails   = gitDev.ticketDetails || [];\n  devMap[jiraKey].repos           = gitDev.repos || [];\n});\nconst developerBreakdown = Object.values(devMap)\n  .map(d => ({\n    ...d,\n    commits_today:   d.commits_today || 0,\n    tickets_touched: d.tickets_touched || 0,\n    ticketDetails:   d.ticketDetails || [],\n    repos:           d.repos || [],\n    score: (d.bugs_fixed * 3) + (d.features_open * 2) + d.bugs_open + (d.commits_today || 0)\n  }))\n  .sort((a, b) => b.score - a.score)\n  .slice(0, 12);\n\n// Enrich commitsByTicket with Jira summaries\nconst jiraSummaryMap = {};\n[...bugs, ...closed, ...feats].forEach(r => {\n  if (r.key) jiraSummaryMap[r.key.toUpperCase()] = { summary: r.summary, status: r.status, assignee: r.assignee };\n});\nconst enrichedCommits = commitsByTicket.slice(0, 20).map(c => {\n  const jira = jiraSummaryMap[c.ticket.toUpperCase()];\n  return { ...c, ticketSummary: jira?.summary || '', ticketStatus: jira?.status || '', ticketAssignee: jira?.assignee || '' };\n});\n\nconst reportDate  = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });\nconst dbPct       = Math.round(((moduleCounts['DB Query'] || 0) / Math.max(openBugs.length, 1)) * 100);\nconst noDatePct   = Math.round((noDate / Math.max(openBugs.length, 1)) * 100);\nconst critPct     = Math.round((criticalBugs / Math.max(openBugs.length, 1)) * 100);\nconst unFeatPct   = Math.round((unassignedFeatures / Math.max(openFeatures.length, 1)) * 100);\nconst teamEntries = Object.entries(teamCounts).sort((a, b) => b[1] - a[1]);\nconst topTeam     = teamEntries[0]?.[0] || 'N/A';\nconst loadRatio   = teamEntries.length > 1 ? (teamEntries[0][1] / Math.max(teamEntries[1][1], 1)).toFixed(1) : 'N/A';\n\nreturn [{ json: {\n  reportDate, dbPct, noDatePct, critPct, unFeatPct, topTeam, loadRatio,\n  bugs:     { total: openBugs.length, critical: criticalBugs, high: highBugs, unassigned, closedRecent, overdueCount: overdueTickets.length, noDate, overdueTickets, teamCounts, moduleCounts },\n  features: { total: openFeatures.length, critical: critFeatures, unassigned: unassignedFeatures, inProgress, toDo, parked, teamCounts: featTeamCounts, escalate },\n  roadmap:  { done: rdDone, inProgress: rdInProg, toDo: rdToDo, rows: roadmapRows },\n  developerBreakdown,\n  gitCommits: {\n    commitsByTicket: enrichedCommits,\n    allCommitsToday: allCommitsToday.slice(0, 30),\n    devCommitSummary,\n    totalCommits, totalTicketsTouched,\n    totalReposTouched, reposTouched, searchTotal\n  }\n} }];\n"
+      },
+      "id": "8811b7fe-ec7c-4d0c-a181-27a2e5756b2b",
+      "name": "Process Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        1072
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Create Google Slides via API ─────────────────────────────────────────\n// Works on n8n Cloud — no file system needed\n// Uses the Google Slides REST API via HTTP Request nodes\n// This node builds the full API request payload\n\nconst d = $input.first().json;\nconst { reportDate, dbPct, noDatePct, critPct, unFeatPct, topTeam, loadRatio, bugs, features, roadmap, developerBreakdown, gitCommits } = d;\n\n// ── COLOUR HELPERS ────────────────────────────────────────────────────────\nconst rgb = (r, g, b) => ({ red: r/255, green: g/255, blue: b/255 });\nconst NAV    = rgb(30, 45, 78);    // dark navy\nconst WHITE  = rgb(255,255,255);\nconst TEAL   = rgb(13,148,136);\nconst RED    = rgb(220,38,38);\nconst AMBER  = rgb(217,119,6);\nconst LGRAY  = rgb(243,246,250);\nconst SLATE  = rgb(71,85,105);\nconst MGRAY  = rgb(143,163,184);\n\n// ── SLIDE DIMENSION (16:9 in EMU — 1 inch = 914400 EMU) ─────────────────\nconst W = 9144000;  // 10 inches\nconst H = 5143500;  // 5.625 inches\nconst inch = n => Math.round(n * 914400);\n\n// ── ID GENERATORS ─────────────────────────────────────────────────────────\nlet idCounter = 1;\nconst id = () => { const n = String(idCounter++).padStart(4,'0'); return `elem${n}`; };\n\n// ── REQUEST BUILDER HELPERS ───────────────────────────────────────────────\nconst addSlide = (slideId) => ({\n  createSlide: {\n    objectId: slideId,\n    slideLayoutReference: { predefinedLayout: 'BLANK' }\n  }\n});\n\nconst addRect = (slideId, objId, x, y, w, h, fillColor, strokeColor) => ({\n  createShape: {\n    objectId: objId,\n    shapeType: 'RECTANGLE',\n    elementProperties: {\n      pageObjectId: slideId,\n      size: { width: { magnitude: inch(w), unit: 'EMU' }, height: { magnitude: inch(h), unit: 'EMU' } },\n      transform: { scaleX:1, scaleY:1, translateX: inch(x), translateY: inch(y), unit: 'EMU' }\n    }\n  }\n});\n\nconst styleRect = (objId, fillColor, strokeColor) => ({\n  updateShapeProperties: {\n    objectId: objId,\n    shapeProperties: {\n      shapeBackgroundFill: { solidFill: { color: { rgbColor: fillColor } } },\n      outline: strokeColor\n        ? { outlineFill: { solidFill: { color: { rgbColor: strokeColor } } }, weight: { magnitude: 12700, unit: 'EMU' } }\n        : { propertyState: 'NOT_RENDERED' }\n    },\n    fields: 'shapeBackgroundFill,outline'\n  }\n});\n\nconst addText = (slideId, objId, x, y, w, h, text, fontSize, color, bold, hAlign, vAlign) => {\n  const safeText = String(text == null ? '' : text);\n  const ops = [{\n    createShape: {\n      objectId: objId,\n      shapeType: 'TEXT_BOX',\n      elementProperties: {\n        pageObjectId: slideId,\n        size: { width: { magnitude: inch(w), unit: 'EMU' }, height: { magnitude: inch(h), unit: 'EMU' } },\n        transform: { scaleX:1, scaleY:1, translateX: inch(x), translateY: inch(y), unit: 'EMU' }\n      }\n    }\n  }];\n  if (safeText.length > 0) {\n    ops.push({ insertText: { objectId: objId, text: safeText } });\n    ops.push({ updateTextStyle: { objectId: objId, style: { fontSize: { magnitude: fontSize, unit: 'PT' }, foregroundColor: { opaqueColor: { rgbColor: color } }, bold: !!bold, fontFamily: 'Calibri' }, fields: 'fontSize,foregroundColor,bold,fontFamily' } });\n    ops.push({ updateParagraphStyle: { objectId: objId, style: { alignment: hAlign || 'START', spaceAbove: { magnitude: 0, unit: 'PT' }, spaceBelow: { magnitude: 0, unit: 'PT' } }, fields: 'alignment,spaceAbove,spaceBelow' } });\n  }\n  return ops;\n};\n\nconst setBg = (slideId, color) => ({\n  updatePageProperties: {\n    objectId: slideId,\n    pageProperties: { pageBackgroundFill: { solidFill: { color: { rgbColor: color } } } },\n    fields: 'pageBackgroundFill'\n  }\n});\n\n// Convenience: add a coloured rectangle + label\nconst kpiCard = (slideId, x, y, w, h, value, label, sub, valColor) => {\n  const bgId = id(), valId = id(), lblId = id(), subId = id();\n  return [\n    addRect(slideId, bgId, x, y, w, h, WHITE),\n    styleRect(bgId, WHITE, MGRAY),\n    ...addText(slideId, valId, x, y+0.06, w, h*0.52, value, 26, valColor||NAV, true, 'CENTER'),\n    ...addText(slideId, lblId, x, y+h*0.56, w, h*0.24, label, 9, SLATE, true, 'CENTER'),\n    ...(sub ? addText(slideId, subId, x, y+h*0.78, w, h*0.2, sub, 7.5, MGRAY, false, 'CENTER') : [])\n  ];\n};\n\n// ── BUILD REQUESTS ARRAY ──────────────────────────────────────────────────\nconst requests = [];\n\n// Delete the blank slide Google auto-creates on presentation creation\nrequests.push({ deleteObject: { objectId: 'p' } });\n\n// ════════════════════════════════════════════════════════════════════════\n// SLIDE 1 — COVER\n// ════════════════════════════════════════════════════════════════════════\nconst s1 = 'slide_cover';\nrequests.push(addSlide(s1));\nrequests.push(setBg(s1, NAV));\n\n// Teal left accent strip\nconst s1_strip = id();\nrequests.push(addRect(s1, s1_strip, 0, 0, 0.15, 5.625, TEAL));\nrequests.push(styleRect(s1_strip, TEAL));\n\n// Dark right panel\nconst s1_panel = id();\nconst panelBg = rgb(22,39,64);\nrequests.push(addRect(s1, s1_panel, 6.2, 0, 3.8, 5.625, panelBg));\nrequests.push(styleRect(s1_panel, panelBg));\n\n// Teal accent bottom right\nconst s1_teal = id();\nrequests.push(addRect(s1, s1_teal, 8.4, 3.8, 1.75, 1.825, TEAL));\nrequests.push(styleRect(s1_teal, TEAL));\n\n// Title text\nrequests.push(...addText(s1, id(), 0.4, 1.0, 5.5, 1.0, 'Engineering', 48, WHITE, true, 'START'));\nrequests.push(...addText(s1, id(), 0.4, 1.9, 5.5, 0.8, 'Executive Dashboard', 34, rgb(214,228,247), false, 'START'));\nrequests.push(...addText(s1, id(), 0.4, 3.1, 5.0, 0.35, 'Sprouts — Platform Engineering', 13, rgb(214,228,247), false, 'START'));\nrequests.push(...addText(s1, id(), 0.4, 3.5, 5.0, 0.28, `${reportDate}  ·  Confidential`, 11, MGRAY, false, 'START'));\n\n// Right panel stats\nconst coverStats = [\n  { val: String(bugs.total),    lbl: 'Open Bugs/Support',         col: RED  },\n  { val: String(features.total),lbl: 'Feature Requests',  col: AMBER},\n  { val: String(roadmap.done),  lbl: 'Shipped This Month', col: TEAL }\n];\ncoverStats.forEach((s, i) => {\n  const cy = 1.2 + i * 1.3;\n  requests.push(...addText(s1, id(), 6.4, cy, 1.2, 0.8, s.val, 40, s.col, true, 'CENTER'));\n  requests.push(...addText(s1, id(), 7.6, cy+0.18, 2.1, 0.45, s.lbl, 12, rgb(214,228,247), false, 'START'));\n});\n\n// ════════════════════════════════════════════════════════════════════════\n// SLIDE 2 — EXECUTIVE SUMMARY\n// ════════════════════════════════════════════════════════════════════════\nconst s2 = 'slide_exec';\nrequests.push(addSlide(s2));\nrequests.push(setBg(s2, LGRAY));\n\n// Teal top bar\nconst s2_bar = id();\nrequests.push(addRect(s2, s2_bar, 0, 0, 10, 0.08, TEAL));\nrequests.push(styleRect(s2_bar, TEAL));\n\nrequests.push(...addText(s2, id(), 0.35, 0.12, 9, 0.5, 'Executive Summary', 24, NAV, true, 'START'));\n\nconst summCols = [\n  { x:0.25, title:'Critical Risks', color: RED, items: [\n    `${bugs.total} open bugs/support — ${critPct}% critical`,\n    `${noDatePct}% have no delivery date`,\n    `DB Query = ${dbPct}% of bug queue`,\n    `${topTeam} ${loadRatio}× team load imbalance`,\n    `${bugs.overdueCount} ticket(s) past committed date`\n  ]},\n  { x:3.55, title:'Immediate Actions', color: AMBER, items: [\n    `Assign ${bugs.unassigned} unowned bugs now`,\n    `Assign ${features.unassigned} unowned features`,\n    `Mandate delivery dates (${noDatePct}% missing)`,\n    'Weekly Critical review cadence',\n    'Root-cause sprint for DB Query'\n  ]},\n  { x:6.85, title:'Positive Signals', color: TEAL, items: [\n    `${bugs.closedRecent} bugs closed in 7 days`,\n    `${roadmap.done} features shipped on time`,\n    `${roadmap.inProgress} features in flight`,\n    'Trend Score & AI Discover progressing',\n    'Strong closure velocity'\n  ]}\n];\n\nsummCols.forEach(col => {\n  const bgId = id(), hdrId = id();\n  // card background\n  requests.push(addRect(s2, bgId, col.x, 0.78, 3.1, 4.6, WHITE));\n  requests.push(styleRect(bgId, WHITE, MGRAY));\n  // coloured header\n  const hdrBgId = id();\n  requests.push(addRect(s2, hdrBgId, col.x, 0.78, 3.1, 0.42, col.color));\n  requests.push(styleRect(hdrBgId, col.color));\n  requests.push(...addText(s2, id(), col.x+0.1, 0.8, 2.9, 0.38, col.title, 10, WHITE, true, 'START'));\n  // bullet items\n  col.items.forEach((item, i) => {\n    const dotId = id();\n    requests.push(addRect(s2, dotId, col.x+0.15, 1.34+i*0.6+0.1, 0.08, 0.08, col.color));\n    requests.push(styleRect(dotId, col.color));\n    requests.push(...addText(s2, id(), col.x+0.3, 1.34+i*0.6, 2.7, 0.52, item, 9, rgb(45,62,84), false, 'START'));\n  });\n});\n\n// ════════════════════════════════════════════════════════════════════════\n// SLIDE 3 — CSI BUG QUEUE\n// ════════════════════════════════════════════════════════════════════════\nconst s3 = 'slide_bugs';\nrequests.push(addSlide(s3));\nrequests.push(setBg(s3, LGRAY));\nconst s3_bar = id();\nrequests.push(addRect(s3, s3_bar, 0, 0, 10, 0.08, TEAL));\nrequests.push(styleRect(s3_bar, TEAL));\nrequests.push(...addText(s3, id(), 0.35, 0.12, 9, 0.5, 'CSI Bug / Support Queue', 24, NAV, true, 'START'));\n\n// KPI cards row\nconst bugKpis = [\n  { val: String(bugs.total),       lbl:'Total Open',     sub:'Active queue',      col:NAV  },\n  { val: String(bugs.critical),    lbl:'Critical',       sub:`${critPct}% of queue`, col:RED  },\n  { val: String(bugs.high),        lbl:'High Priority',  sub:'',                  col:AMBER},\n  { val: String(bugs.unassigned),  lbl:'Unassigned',     sub:'No owner',          col:RED  },\n  { val: String(bugs.closedRecent),lbl:'Closed (7d)',    sub:'Velocity',          col:TEAL },\n  { val: String(bugs.overdueCount),lbl:'Overdue',        sub:'Past commit date',  col:RED  },\n];\nbugKpis.forEach((k, i) => {\n  requests.push(...kpiCard(s3, 0.2+i*1.61, 0.72, 1.46, 0.92, k.val, k.lbl, k.sub, k.col));\n});\n\n// Team bars — left panel\nconst s3_lbg = id();\nrequests.push(addRect(s3, s3_lbg, 0.2, 1.76, 4.6, 3.0, WHITE));\nrequests.push(styleRect(s3_lbg, WHITE, MGRAY));\nrequests.push(...addText(s3, id(), 0.35, 1.84, 4.0, 0.28, 'Tickets by team', 11, NAV, true, 'START'));\n\nconst teamEntries = Object.entries(bugs.teamCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);\nconst maxTeam = Math.max(...teamEntries.map(([,v])=>v), 1);\nconst barColors = [RED, rgb(59,130,246), AMBER, TEAL, MGRAY, MGRAY];\nteamEntries.forEach(([team, count], i) => {\n  const barW = 2.5 * (count / maxTeam);\n  const by = 2.2 + i * 0.38;\n  requests.push(...addText(s3, id(), 0.3, by, 1.7, 0.3, team, 8.5, SLATE, false, 'START'));\n  const trackId = id();\n  requests.push(addRect(s3, trackId, 2.05, by+0.06, 2.5, 0.18, LGRAY));\n  requests.push(styleRect(trackId, LGRAY));\n  if (barW > 0) {\n    const fillId = id();\n    requests.push(addRect(s3, fillId, 2.05, by+0.06, barW, 0.18, barColors[i]||MGRAY));\n    requests.push(styleRect(fillId, barColors[i]||MGRAY));\n  }\n  requests.push(...addText(s3, id(), 4.62, by, 0.3, 0.3, String(count), 8.5, NAV, true, 'START'));\n});\n\n// Module bars — right panel\nconst s3_rbg = id();\nrequests.push(addRect(s3, s3_rbg, 5.1, 1.76, 4.7, 3.0, WHITE));\nrequests.push(styleRect(s3_rbg, WHITE, MGRAY));\nrequests.push(...addText(s3, id(), 5.25, 1.84, 4.0, 0.28, 'Tickets by module', 11, NAV, true, 'START'));\n\nconst modEntries = Object.entries(bugs.moduleCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);\nconst maxMod = Math.max(...modEntries.map(([,v])=>v), 1);\nmodEntries.forEach(([mod, count], i) => {\n  const barW = 2.6 * (count / maxMod);\n  const by = 2.2 + i * 0.38;\n  requests.push(...addText(s3, id(), 5.2, by, 1.8, 0.3, mod, 8.5, SLATE, false, 'START'));\n  const trackId = id();\n  requests.push(addRect(s3, trackId, 7.08, by+0.06, 2.6, 0.18, LGRAY));\n  requests.push(styleRect(trackId, LGRAY));\n  if (barW > 0) {\n    const fillId = id();\n    requests.push(addRect(s3, fillId, 7.08, by+0.06, barW, 0.18, barColors[i]||MGRAY));\n    requests.push(styleRect(fillId, barColors[i]||MGRAY));\n  }\n  requests.push(...addText(s3, id(), 9.75, by, 0.3, 0.3, String(count), 8.5, NAV, true, 'START'));\n});\n\n// Warning banner\nconst s3_warnBg = id();\nrequests.push(addRect(s3, s3_warnBg, 0.2, 4.84, 9.6, 0.26, rgb(254,242,242)));\nrequests.push(styleRect(s3_warnBg, rgb(254,242,242), RED));\nrequests.push(...addText(s3, id(), 0.35, 4.84, 9.3, 0.26, `⚠  DB Query = ${dbPct}% of all bugs. ${topTeam} carries ${loadRatio}× the load of next team. Root-cause analysis required.`, 8, RED, false, 'START'));\n\n// ════════════════════════════════════════════════════════════════════════\n// SLIDE 4 — FEATURE REQUESTS\n// ════════════════════════════════════════════════════════════════════════\nconst s4 = 'slide_features';\nrequests.push(addSlide(s4));\nrequests.push(setBg(s4, LGRAY));\nconst s4_bar = id();\nrequests.push(addRect(s4, s4_bar, 0, 0, 10, 0.08, TEAL));\nrequests.push(styleRect(s4_bar, TEAL));\nrequests.push(...addText(s4, id(), 0.35, 0.12, 9, 0.5, 'Feature Request Queue', 24, NAV, true, 'START'));\n\nconst featKpis = [\n  { val:String(features.total),      lbl:'Total Open',   sub:'',                     col:NAV  },\n  { val:String(features.critical),   lbl:'Critical',     sub:`${critPct}% of queue`, col:RED  },\n  { val:String(features.unassigned), lbl:'Unassigned',   sub:`${unFeatPct}% no owner`,col:RED  },\n  { val:String(features.inProgress), lbl:'In Progress',  sub:'Active dev',            col:TEAL },\n  { val:String(features.toDo),       lbl:'To Do',        sub:'Not started',           col:AMBER},\n  { val:String(features.parked),     lbl:'Parked',       sub:'On hold',               col:MGRAY}\n];\nfeatKpis.forEach((k, i) => requests.push(...kpiCard(s4, 0.2+i*1.61, 0.72, 1.46, 0.92, k.val, k.lbl, k.sub, k.col)));\n\n// Feature team bars\nconst s4_lbg = id();\nrequests.push(addRect(s4, s4_lbg, 0.2, 1.76, 4.6, 1.7, WHITE));\nrequests.push(styleRect(s4_lbg, WHITE, MGRAY));\nrequests.push(...addText(s4, id(), 0.35, 1.84, 4.0, 0.28, 'By team', 11, NAV, true, 'START'));\n\nconst ftEntries = Object.entries(features.teamCounts).sort((a,b)=>b[1]-a[1]).slice(0,3);\nconst maxFt = Math.max(...ftEntries.map(([,v])=>v), 1);\nconst ftColors = [rgb(59,130,246), rgb(139,92,246), TEAL];\nftEntries.forEach(([team, count], i) => {\n  const barW = 2.5 * (count / maxFt);\n  const by = 2.2 + i * 0.37;\n  requests.push(...addText(s4, id(), 0.3, by, 1.7, 0.3, team, 8.5, SLATE, false, 'START'));\n  const trackId = id();\n  requests.push(addRect(s4, trackId, 2.05, by+0.06, 2.5, 0.18, LGRAY));\n  requests.push(styleRect(trackId, LGRAY));\n  if (barW > 0) {\n    const fillId = id();\n    requests.push(addRect(s4, fillId, 2.05, by+0.06, barW, 0.18, ftColors[i]||MGRAY));\n    requests.push(styleRect(fillId, ftColors[i]||MGRAY));\n  }\n  requests.push(...addText(s4, id(), 4.62, by, 0.3, 0.3, String(count), 8.5, NAV, true, 'START'));\n});\n\n// Escalation table\nconst s4_tblBg = id();\nrequests.push(addRect(s4, s4_tblBg, 0.2, 3.58, 9.6, 1.6, WHITE));\nrequests.push(styleRect(s4_tblBg, WHITE, MGRAY));\nrequests.push(...addText(s4, id(), 0.35, 3.65, 9, 0.28, 'Critical features requiring escalation (age > 100 days)', 10, RED, true, 'START'));\n\nconst tblHdrBg = id();\nrequests.push(addRect(s4, tblHdrBg, 0.2, 3.95, 9.6, 0.24, rgb(254,242,242)));\nrequests.push(styleRect(tblHdrBg, rgb(254,242,242)));\n['Ticket','Summary','Team','Assignee','Age','Action'].forEach((h, i) => {\n  const hx = [0.3,1.1,5.1,6.4,7.8,8.5][i];\n  requests.push(...addText(s4, id(), hx, 3.96, [0.75,3.95,1.25,1.35,0.65,0.8][i], 0.22, h, 8, RED, true, 'START'));\n});\n\n(features.escalate || []).slice(0,3).forEach((row, ri) => {\n  const ry = 4.22 + ri * 0.28;\n  if (ri%2===0) { const rb=id(); requests.push(addRect(s4,rb,0.2,ry,9.6,0.26,LGRAY)); requests.push(styleRect(rb,LGRAY)); }\n  const vals = [row.key, row.summary, row.team, row.assignee, `${row.age}d`, !row.assignee||row.assignee==='Unassigned'?'ASSIGN':'ESCALATE'];\n  const cols = [0.3,1.1,5.1,6.4,7.8,8.5];\n  const widths = [0.75,3.95,1.25,1.35,0.65,0.8];\n  vals.forEach((v, ci) => {\n    const isAction = ci===5;\n    const actionColor = isAction ? (v==='ASSIGN'?AMBER:RED) : rgb(45,62,84);\n    requests.push(...addText(s4, id(), cols[ci], ry+0.04, widths[ci], 0.22, String(v||''), 7.5, actionColor, isAction, 'START'));\n  });\n});\n\n// ════════════════════════════════════════════════════════════════════════\n// SLIDE 5 — ROADMAP\n// ════════════════════════════════════════════════════════════════════════\nconst s5 = 'slide_roadmap';\nrequests.push(addSlide(s5));\nrequests.push(setBg(s5, LGRAY));\nconst s5_bar = id();\nrequests.push(addRect(s5, s5_bar, 0, 0, 10, 0.08, TEAL));\nrequests.push(styleRect(s5_bar, TEAL));\nrequests.push(...addText(s5, id(), 0.35, 0.12, 9, 0.5, 'Platform Feature Roadmap', 24, NAV, true, 'START'));\n\n// Roadmap KPI pills\nconst rdStats = [\n  {val:String(roadmap.done),       lbl:'Done',        col:TEAL },\n  {val:String(roadmap.inProgress), lbl:'In Progress',  col:rgb(59,130,246)},\n  {val:String(roadmap.toDo),       lbl:'To Do',        col:MGRAY}\n];\nrdStats.forEach((s, i) => {\n  const pillBg = id();\n  const pillColor = [rgb(236,253,245), rgb(239,246,255), rgb(248,250,252)][i];\n  requests.push(addRect(s5, pillBg, 0.3+i*1.65, 0.68, 1.5, 0.58, pillColor));\n  requests.push(styleRect(pillBg, pillColor, s.col));\n  requests.push(...addText(s5, id(), 0.3+i*1.65, 0.7, 1.5, 0.32, s.val, 22, s.col, true, 'CENTER'));\n  requests.push(...addText(s5, id(), 0.3+i*1.65, 1.0, 1.5, 0.22, s.lbl, 9, s.col, false, 'CENTER'));\n});\n\n// Table header\nconst s5_hdrBg = id();\nrequests.push(addRect(s5, s5_hdrBg, 0.2, 1.36, 9.6, 0.3, NAV));\nrequests.push(styleRect(s5_hdrBg, NAV));\n['Feature','Function','Status','Owner','Team'].forEach((h, i) => {\n  const hx = [0.3,4.05,5.05,6.2,7.6][i];\n  requests.push(...addText(s5, id(), hx, 1.38, [3.7,0.95,1.1,1.35,1.5][i], 0.26, h, 9, WHITE, true, 'START'));\n});\n\nconst statusColors = { 'Done':TEAL, 'In Progress':rgb(59,130,246), 'To Do':MGRAY };\nconst statusBgs = { 'Done':rgb(236,253,245), 'In Progress':rgb(239,246,255), 'To Do':rgb(248,250,252) };\n\n(roadmap.rows || []).slice(0, 12).forEach((row, ri) => {\n  const ry = 1.7 + ri * 0.29;\n  const rowBg = ri%2===0 ? WHITE : LGRAY;\n  const rbId = id();\n  requests.push(addRect(s5, rbId, 0.2, ry, 9.6, 0.285, rowBg));\n  requests.push(styleRect(rbId, rowBg));\n\n  // left accent\n  const accentId = id();\n  const accentColor = statusColors[row.status] || MGRAY;\n  requests.push(addRect(s5, accentId, 0.2, ry, 0.06, 0.285, accentColor));\n  requests.push(styleRect(accentId, accentColor));\n\n  requests.push(...addText(s5, id(), 0.32, ry+0.04, 3.68, 0.22, row.feature||'', 9, rgb(45,62,84), row.status!=='To Do', 'START'));\n  requests.push(...addText(s5, id(), 4.1,  ry+0.04, 0.9,  0.22, row.fn||'', 8.5, SLATE, false, 'START'));\n\n  // Status pill\n  const sc = statusColors[row.status]||MGRAY;\n  const sb = statusBgs[row.status]||LGRAY;\n  const pillId = id();\n  requests.push(addRect(s5, pillId, 5.08, ry+0.05, 1.05, 0.18, sb));\n  requests.push(styleRect(pillId, sb, sc));\n  requests.push(...addText(s5, id(), 5.08, ry+0.05, 1.05, 0.18, row.status||'', 7.5, sc, true, 'CENTER'));\n\n  requests.push(...addText(s5, id(), 6.25, ry+0.04, 1.3,  0.22, row.owner||'', 8.5, SLATE, false, 'START'));\n  requests.push(...addText(s5, id(), 7.65, ry+0.04, 1.5,  0.22, row.team||'',  8.5, SLATE, false, 'START'));\n});\n\n// ════════════════════════════════════════════════════════════════════════\n// SLIDE 6 — ALERTS & NEXT STEPS\n// ════════════════════════════════════════════════════════════════════════\nconst s6 = 'slide_alerts';\nrequests.push(addSlide(s6));\nrequests.push(setBg(s6, NAV));\n\n// Left accent\nconst s6_accent = id();\nrequests.push(addRect(s6, s6_accent, 0, 0, 0.15, 5.625, TEAL));\nrequests.push(styleRect(s6_accent, TEAL));\n\n// Footer\nconst s6_footer = id();\nconst footerBg = rgb(22,39,64);\nrequests.push(addRect(s6, s6_footer, 0, 4.9, 10, 0.725, footerBg));\nrequests.push(styleRect(s6_footer, footerBg));\n\nrequests.push(...addText(s6, id(), 0.35, 0.18, 9, 0.58, 'Alerts & Next Steps', 28, WHITE, true, 'START'));\nrequests.push(...addText(s6, id(), 0.35, 0.72, 9, 0.3,  'Immediate actions for engineering leadership', 12, rgb(214,228,247), false, 'START'));\n\nconst alerts = [\n  { title:'DB Query Concentration',        body:`${dbPct}% of all open bugs in one module. Trigger a root-cause sprint with ${topTeam} this week.`,     color:RED,  bg:rgb(45,26,26) },\n  { title:'Zero Delivery Predictability',  body:`${noDatePct}% of bugs have no committed date. Mandate dates on all critical tickets in 48 hours.`,    color:RED,  bg:rgb(45,26,26) },\n  { title:`${unFeatPct}% Features Unowned`,body:`${features.unassigned} of ${features.total} feature requests have no assignee. Assign owners this week.`,color:AMBER,bg:rgb(45,32,16) },\n  { title:'Repeat Client Escalations',     body:'Multiple clients have 3+ open tickets. Proactive outreach and root-cause analysis needed.',            color:AMBER,bg:rgb(45,32,16) },\n  { title:'Strong Closure Velocity',       body:`${bugs.closedRecent} bugs closed in 7 days. Channel momentum into the aging backlog.`,                 color:TEAL, bg:rgb(13,40,32) },\n  { title:'Roadmap On Track',              body:`${roadmap.inProgress} features in progress. ${roadmap.done} shipped to date.`,                          color:TEAL, bg:rgb(13,40,32) }\n];\n\nalerts.forEach((a, i) => {\n  const col = i%3, row = Math.floor(i/3);\n  const ax = 0.25+col*3.22, ay = 1.18+row*1.74;\n  const cardBgId = id();\n  requests.push(addRect(s6, cardBgId, ax, ay, 3.08, 1.58, a.bg));\n  requests.push(styleRect(cardBgId, a.bg, a.color));\n  const hdrBgId = id();\n  const hdrAlpha = rgb(a.color.red*255+20, a.color.green*255, a.color.blue*255);\n  requests.push(addRect(s6, hdrBgId, ax, ay, 3.08, 0.32, a.color));\n  requests.push(styleRect(hdrBgId, a.color));\n  requests.push(...addText(s6, id(), ax+0.1, ay+0.04, 2.88, 0.26, a.title, 9.5, WHITE, true, 'START'));\n  requests.push(...addText(s6, id(), ax+0.1, ay+0.36, 2.88, 1.1,  a.body,  9,   rgb(214,228,247), false, 'START'));\n});\n\nrequests.push(...addText(s6, id(), 0.35, 4.94, 9.3, 0.24, `Sprouts Engineering  ·  Dashboard for CTO/CEO  ·  ${reportDate}  ·  Confidential`, 8.5, MGRAY, false, 'CENTER'));\n\n\n// ════════════════════════════════════════════════════════════════════════\n// SLIDE 7 — DEVELOPER ACTIVITY & GIT COMMITS\n// ════════════════════════════════════════════════════════════════════════\nconst s7 = 'slide_git';\nrequests.push(addSlide(s7));\nrequests.push(setBg(s7, LGRAY));\n\nconst s7_bar = id();\nrequests.push(addRect(s7, s7_bar, 0, 0, 10, 0.08, TEAL));\nrequests.push(styleRect(s7_bar, TEAL));\nrequests.push(...addText(s7, id(), 0.35, 0.12, 9, 0.5, 'Developer Activity & Git Commits (Last 7 Days)', 22, NAV, true, 'START'));\n\n// ── Left panel: Developer breakdown with commits ─────────────────────────\nconst s7_devBg = id();\nrequests.push(addRect(s7, s7_devBg, 0.2, 0.72, 4.6, 4.65, WHITE));\nrequests.push(styleRect(s7_devBg, WHITE, MGRAY));\nrequests.push(...addText(s7, id(), 0.35, 0.78, 4.3, 0.26, '👥 Developer Breakdown', 11, NAV, true, 'START'));\n\n// Table header\nconst s7_devHdrBg = id();\nrequests.push(addRect(s7, s7_devHdrBg, 0.2, 1.08, 4.6, 0.24, NAV));\nrequests.push(styleRect(s7_devHdrBg, NAV));\nconst devHdrs = ['Developer', 'Commits', 'Tickets', 'Bugs Fixed', 'Open'];\nconst devHdrX  = [0.30, 1.95, 2.65, 3.35, 4.15];\nconst devHdrW  = [1.60, 0.65, 0.65, 0.75, 0.65];\ndevHdrs.forEach((h, i) => {\n  requests.push(...addText(s7, id(), devHdrX[i], 1.1, devHdrW[i], 0.2, h, 8, WHITE, true, i===0?'START':'CENTER'));\n});\n\n(developerBreakdown || []).slice(0, 8).forEach((dev, ri) => {\n  const ry = 1.36 + ri * 0.41;\n  const rowBg = ri % 2 === 0 ? WHITE : LGRAY;\n  const rbId = id();\n  requests.push(addRect(s7, rbId, 0.2, ry, 4.6, 0.39, rowBg));\n  requests.push(styleRect(rbId, rowBg));\n\n  // Accent dot for commit activity\n  const hasCommits = (dev.commits_7d || 0) > 0;\n  const dotColor = hasCommits ? TEAL : MGRAY;\n  const dotId = id();\n  requests.push(addRect(s7, dotId, 0.25, ry + 0.14, 0.08, 0.08, dotColor));\n  requests.push(styleRect(dotId, dotColor));\n\n  const rowVals = [\n    dev.name.split(' ')[0],        // first name only for space\n    String(dev.commits_7d || 0),\n    String(dev.tickets_touched || 0),\n    String(dev.bugs_fixed || 0),\n    String(dev.bugs_open || 0)\n  ];\n  const valColors = [\n    rgb(45,62,84),\n    hasCommits ? TEAL : MGRAY,\n    hasCommits ? rgb(59,130,246) : MGRAY,\n    rgb(45,62,84),\n    (dev.bugs_open || 0) > 3 ? RED : rgb(45,62,84)\n  ];\n  rowVals.forEach((v, ci) => {\n    requests.push(...addText(s7, id(), devHdrX[ci] + (ci===0?0.12:0), ry+0.08, devHdrW[ci], 0.24, v, 9, valColors[ci], ci===0, ci===0?'START':'CENTER'));\n  });\n});\n\n// ── Right panel: Recent commits by ticket ────────────────────────────────\nconst s7_cmtBg = id();\nrequests.push(addRect(s7, s7_cmtBg, 5.1, 0.72, 4.7, 4.65, WHITE));\nrequests.push(styleRect(s7_cmtBg, WHITE, MGRAY));\nrequests.push(...addText(s7, id(), 5.25, 0.78, 4.3, 0.26, '🔀 Recent Commits per CSI Ticket', 11, NAV, true, 'START'));\n\n// Column headers\nconst s7_cmtHdrBg = id();\nrequests.push(addRect(s7, s7_cmtHdrBg, 5.1, 1.08, 4.7, 0.24, NAV));\nrequests.push(styleRect(s7_cmtHdrBg, NAV));\nconst cmtHdrs = ['Ticket', 'Message', 'Author', 'When'];\nconst cmtHdrX = [5.18, 5.88, 8.55, 9.3];\nconst cmtHdrW = [0.65, 2.62, 0.70, 0.6];\ncmtHdrs.forEach((h, i) => {\n  requests.push(...addText(s7, id(), cmtHdrX[i], 1.1, cmtHdrW[i], 0.2, h, 8, WHITE, true, 'START'));\n});\n\nconst gitData = d.gitCommits || {};\nconst recentCommits = (gitData.commitsByTicket || []).slice(0, 9);\n\nrecentCommits.forEach((c, ri) => {\n  const ry = 1.36 + ri * 0.37;\n  const rowBg = ri % 2 === 0 ? WHITE : LGRAY;\n  const rbId = id();\n  requests.push(addRect(s7, rbId, 5.1, ry, 4.7, 0.35, rowBg));\n  requests.push(styleRect(rbId, rowBg));\n\n  // Ticket pill\n  const pillId = id();\n  requests.push(addRect(s7, pillId, 5.15, ry + 0.07, 0.65, 0.18, rgb(239,246,255)));\n  requests.push(styleRect(pillId, rgb(239,246,255), rgb(59,130,246)));\n  requests.push(...addText(s7, id(), 5.15, ry + 0.07, 0.65, 0.18, c.ticket || '', 7, rgb(59,130,246), true, 'CENTER'));\n\n  // Commit message — truncate to ~35 chars\n  const msg = (c.message || '').substring(0, 35) + ((c.message || '').length > 35 ? '…' : '');\n  requests.push(...addText(s7, id(), 5.88, ry + 0.06, 2.6, 0.26, msg, 8, rgb(45,62,84), false, 'START'));\n\n  // Author — first name only\n  const authorShort = (c.author || '').split(' ')[0];\n  requests.push(...addText(s7, id(), 8.55, ry + 0.06, 0.7, 0.22, authorShort, 8, SLATE, false, 'START'));\n\n  // Relative time\n  const commitMs = new Date(c.commitDate).getTime();\n  const diffH = Math.round((Date.now() - commitMs) / 3600000);\n  const relTime = diffH < 24 ? `${diffH}h ago` : `${Math.floor(diffH/24)}d ago`;\n  requests.push(...addText(s7, id(), 9.3, ry + 0.06, 0.55, 0.22, relTime, 7.5, MGRAY, false, 'START'));\n});\n\n// ── Summary banner at bottom ──────────────────────────────────────────────\nconst s7_bannerBg = id();\nrequests.push(addRect(s7, s7_bannerBg, 0.2, 5.3, 9.6, 0.26, rgb(236,253,245)));\nrequests.push(styleRect(s7_bannerBg, rgb(236,253,245), TEAL));\nconst totalC = (gitData.totalCommits || 0);\nconst totalT = (gitData.totalTicketsTouched || 0);\nrequests.push(...addText(s7, id(), 0.35, 5.31, 9.3, 0.24,\n  `🔀  ${totalC} commit${totalC!==1?'s':''} in last 7 days across ${totalT} CSI ticket${totalT!==1?'s':''}  ·  Data via GitHub Search API`,\n  8.5, TEAL, true, 'CENTER'));\n\n// ── OUTPUT the requests payload (updated slideCount) ─────────────────────\nreturn [{ json: { requests, reportDate, slideCount: 7 } }];\n"
+      },
+      "id": "081b3e68-5aa4-40a6-b777-fad92a178bac",
+      "name": "Build Slides Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        1472
+      ],
+      "notes": "Builds the full Google Slides API batchUpdate payload. No file system access needed — works on n8n Cloud."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slides.googleapis.com/v1/presentations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ 'Sprouts Engineering Dashboard — ' + $node['Build Slides Requests'].json.reportDate }}\"\n}",
+        "options": {}
+      },
+      "id": "13bc0440-fc59-4285-9932-4c690de6de65",
+      "name": "Create Presentation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -128,
+        1680
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "B8cDqCRfWbBrIyke",
+          "name": "Bhomya credential"
+        }
+      },
+      "notes": "Creates a blank Google Slides presentation. Returns the presentationId used by the next node."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://slides.googleapis.com/v1/presentations/{{ $json.presentationId }}:batchUpdate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { requests: $('Build Slides Requests').first().json.requests } }}",
+        "options": {}
+      },
+      "id": "f7232e17-2e02-44fd-b0c8-de7e17b78004",
+      "name": "Apply Slides Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -384,
+        1984
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "B8cDqCRfWbBrIyke",
+          "name": "Bhomya credential"
+        }
+      },
+      "notes": "Sends all 6 slides worth of shapes, text, and colours in one batchUpdate call."
+    },
+    {
+      "parameters": {
+        "jsCode": "const presId = $('Create Presentation').first().json.presentationId;\nconst pd     = $('Process Data').first().json;\nconst reportDate = pd.reportDate;\nconst slideUrl   = `https://docs.google.com/presentation/d/${presId}/edit`;\nconst exportUrl  = `https://docs.google.com/presentation/d/${presId}/export/pptx`;\n\nreturn [{ json: {\n  presId, slideUrl, exportUrl, reportDate,\n  bugs:               pd.bugs,\n  features:           pd.features,\n  roadmap:            pd.roadmap,\n  dbPct:              pd.dbPct,\n  noDatePct:          pd.noDatePct,\n  critPct:            pd.critPct,\n  unFeatPct:          pd.unFeatPct,\n  topTeam:            pd.topTeam,\n  loadRatio:          pd.loadRatio,\n  developerBreakdown: pd.developerBreakdown,\n  gitCommits:         pd.gitCommits\n}}];\n"
+      },
+      "id": "8caec514-824c-4141-9786-db503d3ec75c",
+      "name": "Build Share Link",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        2368
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0ATYN2TVAR",
+          "mode": "list",
+          "cachedResultName": "product-health"
+        },
+        "text": "=`📊 Engineering Dashboard — {{ $json.reportDate }}`\n\n*🐛 CSI Bug Queue*\n>*Total:* `{{ $json.bugs.total }}`  |  *Critical:* `{{ $json.bugs.critical }}` ({{ $json.critPct }}%)  |  *High:* `{{ $json.bugs.high }}`\n>*Closed (7d):* `{{ $json.bugs.closedRecent }}`  |  *Unassigned:* `{{ $json.bugs.unassigned }}`  |  *Overdue:* `{{ $json.bugs.overdueCount }}`\n>⚠️ DB Query = *{{ $json.dbPct }}%* of queue  |  {{ $json.topTeam }} *{{ $json.loadRatio }}×* team imbalance\n>📅 *{{ $json.noDatePct }}%* of bugs have no committed delivery date\n\n*🛠 Feature Requests*\n>*Total:* `{{ $json.features.total }}`  |  *Critical:* `{{ $json.features.critical }}`  |  *In Progress:* `{{ $json.features.inProgress }}`\n>*Unassigned:* `{{ $json.features.unassigned }}`  |  *Parked:* `{{ $json.features.parked }}`\n\n*🚀 Roadmap*\n>✅ *Done:* `{{ $json.roadmap.done }}`  |  🔵 *In Progress:* `{{ $json.roadmap.inProgress }}`  |  ⬜ *To Do:* `{{ $json.roadmap.toDo }}`\n\n*👥 Developer Activity — Today’s Commits across All Repos*\n>{{ ($json.developerBreakdown || []).filter(d => d.commits_today > 0).map(d => {\n  const ticketLine = (d.ticketDetails && d.ticketDetails.length > 0)\n    ? d.ticketDetails.slice(0, 5).map(t => '`' + t.ticket + '`×' + t.count).join('  ')\n    : '_no CSI commits today_';\n  const repoLine = (d.repos && d.repos.length > 0) ? d.repos.join(', ') : '';\n  return '• *' + d.name + '* — 🐛 ' + d.bugs_fixed + ' fixed / ' + d.bugs_open + ' open  |  🔀 ' + d.commits_today + ' commits today\\n>  ↳ CSI: ' + ticketLine + (repoLine ? '\\n>  📦 Repos: ' + repoLine : '');\n}).join('\\n>') }}\n\n*🔀 Today’s Git Commits — All Repos · All Branches*\n>*{{ $json.gitCommits.totalCommits }} commits* across *{{ $json.gitCommits.totalTicketsTouched }} tickets* in *{{ $json.gitCommits.totalReposTouched }} repos* today\n>_Repos active: {{ ($json.gitCommits.reposTouched || []).join(', ') }}_\n>{{ ($json.gitCommits.commitsByTicket || []).slice(0, 15).map(c => {\n  const diffH = Math.round((Date.now() - new Date(c.commitDate).getTime()) / 3600000);\n  const rel   = diffH < 1 ? 'just now' : diffH + 'h ago';\n  const msg   = (c.message || '').replace(/^CSI-\\d+[:\\s]*/i, '').substring(0, 55);\n  const who   = c.authorLogin || c.author || '?';\n  const jira  = c.ticketSummary ? ' — _' + c.ticketSummary.substring(0, 40) + '_' : '';\n  return '• `' + c.ticket + '` [' + c.repo + ']' + jira + '\\n>  ↳ \"' + msg + '\" · @' + who + ' · ' + rel;\n}).join('\\n>') }}\n\n<{{ $json.slideUrl }}|📊 Open Full Dashboard Slides>  |  <{{ $json.exportUrl }}|⬇️ Download PPTX>\nAutomated with this n8n workflow",
+        "otherOptions": {
+          "unfurl_links": false
+        }
+      },
+      "id": "83e24961-0133-41bc-a475-267f81e1ca2e",
+      "name": "Slack — Post Dashboard",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        2768
+      ],
+      "webhookId": "05ef2675-06fd-49b9-8e9a-6d67d8791a54",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "FCkCSc6NzrCGzHVy",
+          "name": "Slack account Bhomya"
+        }
+      },
+      "notes": "Posts rich Slack message with all KPIs + a button linking directly to the Google Slides deck. Also includes a Download as PPTX link — Google auto-converts Slides to PPTX on export."
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "options": {
+          "jql": "project = CSI AND issuetype IN (\"New Feature\", Enhancement) AND status NOT IN (Cancelled, Duplicate, Closed, \"Customer Validation\", \"Waiting for customer\") AND \"team[team]\" IN (d826d1d2-2b59-4b4c-99b1-1140211e8865, 93c753a8-f92d-453f-90f8-695d6ed9e9de,c38939ff-71a5-41cf-b599-6f8e7adde327) AND priority IN (Critical, High) ORDER BY created DESC"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        928
+      ],
+      "id": "14629e85-2584-412d-9100-92fe7d7f26f4",
+      "name": "Get Feature Requests",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "fDA7kdMOEbBywQQW",
+          "name": "Jira SW Cloud account Bhomya"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set-bugs-001_assign",
+              "name": "_type",
+              "value": "bug",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        176,
+        512
+      ],
+      "id": "62050374-f7a8-41eb-a395-15f816cae329",
+      "name": "Tag: bug"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set-closed-002_assign",
+              "name": "_type",
+              "value": "closed_bug",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        672
+      ],
+      "id": "ef4d436c-4042-4f79-a01b-cfb6b6ef317b",
+      "name": "Tag: closed_bug"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set-feats-003_assign",
+              "name": "_type",
+              "value": "feature",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        112,
+        1008
+      ],
+      "id": "29393f18-bcf6-4b2f-bad4-e99e61d19e69",
+      "name": "Tag: feature"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "options": {
+          "jql": "project = CSI AND type IN (Bug, Support) AND status NOT IN (Duplicate, \"Do not use\", \"Waiting for customer\", Closed, \"Customer Validation\", \"On Hold\", Pending, Cancelled) ORDER BY created DESC"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        256
+      ],
+      "id": "e658abba-3c2b-4c1d-9422-71b1e3a66683",
+      "name": "Open bugs/Support",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "fDA7kdMOEbBywQQW",
+          "name": "Jira SW Cloud account Bhomya"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "options": {
+          "jql": "project = CSI AND issuetype IN (Bug, Support) AND \"Team[Team]\" !=ba041cda-e806-4b14-9ee4-98d1187e5e8d AND status CHANGED TO (\"Customer Validation\", Closed) AFTER -7d ORDER BY created DESC"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        592
+      ],
+      "id": "2734eb7c-6f5e-4e43-b1e4-e1672619a7d2",
+      "name": "Closed 7 Days",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "fDA7kdMOEbBywQQW",
+          "name": "Jira SW Cloud account Bhomya"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{$node[\"Create Presentation\"].json[\"presentationId\"]}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "addParents",
+              "value": "17c_SfBf511-L9gRpvgclTzkwPNwiIRqg"
+            },
+            {
+              "name": "removeParents",
+              "value": "root"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        0,
+        2064
+      ],
+      "id": "4c35d188-a0d2-46be-824d-758cd1220bc7",
+      "name": "HTTP Request",
+      "credentials": {
+        "oAuth2Api": {
+          "id": "B8cDqCRfWbBrIyke",
+          "name": "Bhomya credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/repos/sprouts-ai/ApiService/commits",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "=={{ 'org:sprouts-ai CSI- committer-date:>' + $now.minus(1, 'days').toFormat('yyyy-MM-dd') }}"
+            },
+            {
+              "name": "per_page",
+              "value": "100"
+            },
+            {
+              "name": "sort",
+              "value": "committer-date"
+            },
+            {
+              "name": "order",
+              "value": "desc"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.cloak-preview+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c39b059d-e082-40fb-9d9c-95ff4ac01701",
+      "name": "Fetch GitHub Commits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -736,
+        928
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AYni2NIEZ0M7up9P",
+          "name": "Header Auth account Bhomya"
+        },
+        "httpBearerAuth": {
+          "id": "oAbdWFz5gnzcNVsA",
+          "name": "Bearer GitHub"
+        }
+      },
+      "notes": "Calls GitHub Search Commits API for all commits in last 7 days where message contains 'CSI-'. Runs on the same schedule as the dashboard. Requires a GitHub PAT stored as HTTP Header Auth credential with header 'Authorization' = 'Bearer YOUR_PAT'. Replace YOUR_ORG/YOUR_REPO with your actual repo."
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ── Parse GitHub commits — handles BOTH response shapes ────────────────\n// Shape A (Search API): single item per input = { total_count, items: [...] }\n// Shape B (List API):   one item per commit   = { sha, commit: {...}, ... }\n// We detect which shape each input item is and normalise to a flat array.\n\nconst allInputs = $input.all().map(i => i.json);\nconst now = new Date();\nconst oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);\nconst ticketRe = /(?:CSI|SPROUT)-\\d+/gi;\n\n// Normalise: flatten regardless of which API shape arrived\nconst seen = new Set();\nconst uniqueItems = [];\nallInputs.forEach(input => {\n  // Shape A — Search API: input has .items array\n  if (Array.isArray(input.items)) {\n    input.items.forEach(item => {\n      if (item.sha && !seen.has(item.sha)) {\n        seen.add(item.sha);\n        uniqueItems.push(item);\n      }\n    });\n  }\n  // Shape B — List API: input IS the commit object directly\n  else if (input.sha && input.commit) {\n    if (!seen.has(input.sha)) {\n      seen.add(input.sha);\n      // List API doesn't have item.repository — inject from url\n      if (!input.repository) {\n        const match = (input.url || input.html_url || '').match(/repos\\/[^/]+\\/([^/]+)/);\n        input.repository = { name: match ? match[1] : 'unknown-repo' };\n      }\n      uniqueItems.push(input);\n    }\n  }\n});\n\n// Parse each commit into a flat object\nconst parsedCommits = uniqueItems.map(item => {\n  const commit     = item.commit     || {};\n  const author     = commit.author   || {};\n  const committer  = commit.committer || {};\n  const message    = commit.message  || '';\n  const sha        = item.sha        || '';\n  const url        = item.html_url   || '';\n  const repo       = item.repository?.name || 'unknown-repo';\n  const commitDate = new Date(committer.date || author.date || now);\n  const authorName  = author.name       || item.author?.login  || 'Unknown';\n  const authorLogin = item.author?.login || '';\n  const ticketMatches = [...message.matchAll(ticketRe)].map(m => m[0].toUpperCase());\n  const tickets = [...new Set(ticketMatches)];\n  const firstLine = message.split('\\n')[0].trim();\n  return { sha, url, message: firstLine, authorName, authorLogin, commitDate, tickets, repo };\n});\n\n// Only commits within last 24 hours that reference a ticket\nconst todayCommits = parsedCommits.filter(c =>\n  c.commitDate >= oneDayAgo && c.tickets.length > 0\n);\n\n// Most recent commit per ticket (for display card)\nconst ticketMap = {};\ntodayCommits.forEach(c => {\n  c.tickets.forEach(ticket => {\n    const ex = ticketMap[ticket];\n    if (!ex || c.commitDate > new Date(ex.commitDate)) {\n      ticketMap[ticket] = {\n        ticket, message: c.message, author: c.authorName,\n        authorLogin: c.authorLogin, commitDate: c.commitDate.toISOString(),\n        url: c.url, sha: c.sha.substring(0, 7), repo: c.repo\n      };\n    }\n  });\n});\nconst commitsByTicket = Object.values(ticketMap)\n  .sort((a, b) => new Date(b.commitDate) - new Date(a.commitDate));\n\n// All today's commits flat list\nconst allCommitsToday = todayCommits\n  .map(c => ({\n    ticket: c.tickets[0], allTickets: c.tickets,\n    message: c.message, author: c.authorName, authorLogin: c.authorLogin,\n    commitDate: c.commitDate.toISOString(), url: c.url,\n    sha: c.sha.substring(0, 7), repo: c.repo\n  }))\n  .sort((a, b) => new Date(b.commitDate) - new Date(a.commitDate));\n\n// Per-developer summary\nconst devCommitMap = {};\nallCommitsToday.forEach(c => {\n  const dev = c.author;\n  if (!devCommitMap[dev]) devCommitMap[dev] = {\n    name: dev, login: c.authorLogin,\n    commitCount: 0, tickets: new Set(), repos: new Set(), ticketDetails: {}\n  };\n  devCommitMap[dev].commitCount++;\n  devCommitMap[dev].tickets.add(c.ticket);\n  devCommitMap[dev].repos.add(c.repo);\n  devCommitMap[dev].ticketDetails[c.ticket] = (devCommitMap[dev].ticketDetails[c.ticket] || 0) + 1;\n});\nconst devCommitSummary = Object.values(devCommitMap).map(d => ({\n  name: d.name, login: d.login,\n  commitCount: d.commitCount,\n  uniqueTickets: d.tickets.size,\n  repos: [...d.repos],\n  ticketDetails: Object.entries(d.ticketDetails)\n    .map(([ticket, count]) => ({ ticket, count }))\n    .sort((a, b) => b.count - a.count)\n})).sort((a, b) => b.commitCount - a.commitCount);\n\nconst reposTouched = [...new Set(allCommitsToday.map(c => c.repo))];\n\nreturn [{ json: {\n  _type: 'git_commits',\n  commitsByTicket, allCommitsToday, devCommitSummary,\n  totalCommits: allCommitsToday.length,\n  totalTicketsTouched: commitsByTicket.length,\n  totalReposTouched: reposTouched.length,\n  reposTouched,\n  searchTotal: uniqueItems.length\n} }];\n"
+      },
+      "id": "cdec7e10-e2b2-4c2d-a108-bde3025cf9a6",
+      "name": "Process GitHub Commits",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        1264
+      ],
+      "notes": "Parses GitHub Search API response. Produces: commitsByTicket (most recent commit per CSI ticket) + allCommits7d (all commits last 7d) + devCommitSummary."
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/repos/sprouts-ai/ApiService/commits",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "=={{ 'org:sprouts-ai SPROUT- committer-date:>' + $now.minus(1, 'days').toFormat('yyyy-MM-dd') }}"
+            },
+            {
+              "name": "per_page",
+              "value": "100"
+            },
+            {
+              "name": "sort",
+              "value": "committer-date"
+            },
+            {
+              "name": "order",
+              "value": "desc"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.cloak-preview+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9b7862a5-714c-42df-9c03-9e9886393ce4",
+      "name": "Fetch GitHub Commits (SPROUT)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1056,
+        1200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "AYni2NIEZ0M7up9P",
+          "name": "Header Auth account Bhomya"
+        },
+        "httpBearerAuth": {
+          "id": "oAbdWFz5gnzcNVsA",
+          "name": "Bearer GitHub"
+        }
+      },
+      "notes": "Calls GitHub Search Commits API for all commits in last 7 days where message contains 'CSI-'. Runs on the same schedule as the dashboard. Requires a GitHub PAT stored as HTTP Header Auth credential with header 'Authorization' = 'Bearer YOUR_PAT'. Replace YOUR_ORG/YOUR_REPO with your actual repo."
+    },
+    {
+      "parameters": {},
+      "id": "bea4eac7-cd91-4ae1-a153-e82c33980567",
+      "name": "Merge Git Fetches",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -512,
+        1168
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Open bugs/Support",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Closed 7 Days",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Feature Requests",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Roadmap",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch GitHub Commits",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch GitHub Commits (SPROUT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Feature Requests": {
+      "main": [
+        [
+          {
+            "node": "Tag: feature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag: bug": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Tag: closed_bug": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Tag: feature": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Read Roadmap": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Process Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Data": {
+      "main": [
+        [
+          {
+            "node": "Build Slides Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Slides Requests": {
+      "main": [
+        [
+          {
+            "node": "Create Presentation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Presentation": {
+      "main": [
+        [
+          {
+            "node": "Apply Slides Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Slides Content": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Share Link": {
+      "main": [
+        [
+          {
+            "node": "Slack — Post Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open bugs/Support": {
+      "main": [
+        [
+          {
+            "node": "Tag: bug",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Closed 7 Days": {
+      "main": [
+        [
+          {
+            "node": "Tag: closed_bug",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Build Share Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch GitHub Commits": {
+      "main": [
+        [
+          {
+            "node": "Merge Git Fetches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process GitHub Commits": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Fetch GitHub Commits (SPROUT)": {
+      "main": [
+        [
+          {
+            "node": "Merge Git Fetches",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Git Fetches": {
+      "main": [
+        [
+          {
+            "node": "Process GitHub Commits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b1595372-0e0d-4b0a-93a2-c8f1de64d46e",
+  "meta": {
+    "instanceId": "1d141fcb2f55389ba450b124e1fd3c859ed8488fe4c85ce921ae26d82440b218"
+  },
+  "id": "WhfupdM8Fa3Lok5K",
+  "tags": []
+}
