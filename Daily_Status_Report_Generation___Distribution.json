@@ -1,0 +1,786 @@
+{
+  "name": "AccountOS — Daily Report Generation & Distribution",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "block",
+        "operation": "getAll",
+        "blockId": {
+          "__rl": true,
+          "value": "https://www.notion.so/Report-Config-Account-OS-4c32c19c04234e5e8a277d773120b7f0",
+          "mode": "url"
+        }
+      },
+      "id": "9a8ea6b4-0f85-4325-aa4d-0a2f1a7e5caa",
+      "name": "Notion — Get Report Config1",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        -5520,
+        496
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "L94qysHk5pGH8WOE",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const blocks = $input.all().map(item => item.json);\nconst config = {\n  active_milestones: [],\n  milestone_targets: {},\n  cycle_milestone: null,\n  show_next_cycle: true,\n  trend_data_json: null,\n  trend_data_block_id: null,\n  slack_channel_id: '',\n  report_settings: {}\n};\n\nlet currentSection = '';\nfor (const block of blocks) {\n  if (block.type === 'heading_2') {\n    currentSection = block.heading_2?.text?.[0]?.plain_text || \n                     block.heading_2?.rich_text?.[0]?.plain_text || '';\n    continue;\n  }\n  if (block.type === 'code') {\n    const raw = block.code?.text?.[0]?.plain_text || \n                block.code?.rich_text?.[0]?.plain_text || '';\n    const lines = raw.split('\\n').map(l => l.replace(/^-\\s*/, '').trim()).filter(Boolean);\n\n    if (currentSection === 'Active Milestones') {\n      lines.forEach(l => config.active_milestones.push(l));\n    }\n    else if (currentSection === 'Milestone Target Dates') {\n      lines.forEach(l => {\n        if (l.includes(':')) {\n          const [name, ...rest] = l.split(':');\n          config.milestone_targets[name.trim()] = rest.join(':').trim();\n        }\n      });\n    }\n    else if (currentSection === 'Cycle Tracking') {\n      lines.forEach(l => {\n        if (l.toLowerCase().startsWith('cycle milestone:')) {\n          config.cycle_milestone = l.split(':')[1]?.trim();\n        }\n        if (l.toLowerCase().startsWith('show next cycle:')) {\n          config.show_next_cycle = l.split(':')[1]?.trim().toLowerCase() === 'true';\n        }\n      });\n    }\n    else if (currentSection === 'Weekly Trend Data') {\n      config.trend_data_json = raw;\n      config.trend_data_block_id = block.id;\n    }\n    else if (currentSection === 'Slack Distribution') {\n      lines.forEach(l => {\n        if (l.toLowerCase().includes('leadership')) {\n          config.slack_channel_id = l.split(':').slice(1).join(':').trim();\n        }\n      });\n    }\n    else if (currentSection === 'Report Settings') {\n      lines.forEach(l => {\n        if (l.includes(':')) {\n          const [key, ...rest] = l.split(':');\n          config.report_settings[key.trim()] = rest.join(':').trim();\n        }\n      });\n    }\n  }\n}\n\nconfig.active_milestones = [...new Set(config.active_milestones)];\nreturn { json: config };"
+      },
+      "id": "e732e933-348e-4b26-b873-5fbdd52cd604",
+      "name": "Parse Report Config1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5296,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "block",
+        "operation": "getAll",
+        "blockId": {
+          "__rl": true,
+          "value": "={{ $('Get many database pages').item.json.id }}",
+          "mode": "id"
+        },
+        "returnAll": true
+      },
+      "id": "3ce437a1-9767-4402-8590-3d8e03d1d37d",
+      "name": "Notion — Get Sync Page Content1",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        -5088,
+        336
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "L94qysHk5pGH8WOE",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const blocks = $input.all().map(item => item.json);\nconst syncPage = $('Get many database pages').first().json;\n\n// Highlights\nlet highlights = 'No highlights provided.';\nif (syncPage?.properties?.Highlights?.rich_text?.length) {\n  highlights = syncPage.properties.Highlights.rich_text.map(t => t.plain_text).join('').trim();\n} else if (syncPage?.property_highlights) {\n  highlights = typeof syncPage.property_highlights === 'string'\n    ? syncPage.property_highlights\n    : Array.isArray(syncPage.property_highlights)\n      ? syncPage.property_highlights.map(t => t.plain_text || t).join('').trim()\n      : 'No highlights provided.';\n}\n\n// Tomorrow's focus\nlet currentSection = '';\nlet tomorrowsFocus = '';\n\nfor (const block of blocks) {\n  if (block.type === 'heading_1' || block.type === 'heading_2' || block.type === 'heading_3') {\n    const text = (\n      block[block.type]?.text?.[0]?.plain_text || \n      block[block.type]?.rich_text?.[0]?.plain_text || ''\n    ).toLowerCase();\n    if (text.includes(\"tomorrow's focus\") || text.includes('section 7')) currentSection = 'focus';\n    else currentSection = 'other';\n    continue;\n  }\n  if (currentSection === 'focus' && block.type === 'bulleted_list_item') {\n    const segments = block.bulleted_list_item?.text || \n                     block.bulleted_list_item?.rich_text || [];\n    const content = segments.map(t => t.plain_text).join('').trim();\n    if (content) tomorrowsFocus += '• ' + content + '\\n';\n  }\n}\n\nconst syncDate = syncPage?.properties?.Date?.date?.start || syncPage?.property_date;\nconst syncTitle = syncPage?.properties?.['Sync Title']?.title?.[0]?.plain_text || syncPage?.name;\nconst syncPageId = syncPage?.id;\n\nreturn {\n  json: {\n    highlights_content: highlights,\n    tomorrows_focus: tomorrowsFocus.trim() || 'No focus items provided.',\n    sync_date: syncDate,\n    sync_title: syncTitle,\n    sync_page_id: syncPageId\n  }\n};"
+      },
+      "id": "176deef8-8d82-40ad-8863-e638ff18affd",
+      "name": "Parse Sync Page Content1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4608,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst allIssues = data.all_issues || [];\nconst activeMilestones = $('Parse Report Config1').first().json.active_milestones;\n\nconst filtered = allIssues.filter(issue => {\n  const ms = issue.projectMilestone?.name;\n  return ms && activeMilestones.includes(ms);\n});\n\nconst mapped = filtered.map(issue => ({\n  id: issue.identifier || issue.id,\n  title: issue.title,\n  status: issue.state?.name || 'Unknown',\n  priority: issue.priority || 'No priority',\n  assignee: issue.assignee?.name || issue.assignee?.displayName || null,\n  labels: (issue.labels?.nodes || []).map(l => l.name),\n  project: issue.project?.name || 'No project',\n  projectMilestone: issue.projectMilestone?.name || 'No milestone',\n  cycle: issue.cycle ? {\n    id: issue.cycle.id,\n    name: issue.cycle.name,\n    number: issue.cycle.number,\n    startsAt: issue.cycle.startsAt,\n    endsAt: issue.cycle.endsAt\n  } : null,\n  dueDate: issue.dueDate || null,\n  createdAt: issue.createdAt,\n  updatedAt: issue.updatedAt\n}));\n\nreturn {\n  json: {\n    issues: mapped,\n    issue_count: mapped.length,\n    milestones_found: [...new Set(mapped.map(i => i.projectMilestone))]\n  }\n};"
+      },
+      "id": "80dbc21b-44b1-48d1-af3d-e3c5a9beee28",
+      "name": "Filter Issues to Milestones1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3872,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.issue_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b00bbee4-2693-4027-b95f-a83778050cd9",
+      "name": "IF — Issues Found1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -3584,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0A836S971P",
+          "mode": "id"
+        },
+        "text": ":warning: *AccountOS Daily Report — BLOCKED*\n\nNo issues found matching configured milestones.\n\nActive milestones checked: {{ $('Parse Report Config').item.json.active_milestones.join(', ') }}\n\nVerify milestone names in the Report Config page.",
+        "otherOptions": {}
+      },
+      "id": "d7abb425-1021-4c89-b2c1-1e3e9bc41ae7",
+      "name": "Slack — Alert No Issues Found1",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        -3504,
+        736
+      ],
+      "webhookId": "a2cf7c11-c3f3-4ac4-8ede-c16921d5e5a1",
+      "credentials": {
+        "slackApi": {
+          "id": "baNwqfsoC6JnS3f6",
+          "name": "Prerana's Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Parse Report Config1').item.json;\nconst syncData = $('Parse Sync Page Content1').item.json;\nconst issueData = $('Filter Issues to Milestones1').item.json;\n\nconst promptContent = `Generate today's engineering dashboard report.\n\nReport date: ${syncData.sync_date}\n\n## Report Config\n\nActive Milestones: ${JSON.stringify(config.active_milestones)}\nMilestone Target Dates: ${JSON.stringify(config.milestone_targets)}\nCycle milestone: ${config.cycle_milestone || 'none configured'}\nShow next cycle: ${config.show_next_cycle}\nReport Settings: ${JSON.stringify(config.report_settings)}\n\n## Weekly Trend Data\n${config.trend_data_json || 'null — first run, compute metrics from issue createdAt dates'}\n\n## Linear Issue Data (${issueData.issue_count} issues, pre-filtered to configured milestones)\n${JSON.stringify(issueData.issues)}\n\n## Sync Meeting Content\n\n### Section 6: Daily Highlights\n${syncData.highlights_content}\n\n### Section 7: Tomorrow's Focus\n${syncData.tomorrows_focus}`;\n\nreturn {\n  json: {\n    prompt_content: promptContent,\n    sync_date: syncData.sync_date,\n    issue_count: issueData.issue_count\n  }\n};"
+      },
+      "id": "33af7384-311d-4b38-8df0-69a2153947d9",
+      "name": "Aggregate Data for Claude1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3136,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "000d1629-f036-4d66-99cf-c17904de5542",
+      "name": "IF — Claude Succeeded1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2336,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "text": ":red_circle: *AccountOS Daily Report — GENERATION FAILED*\n\nClaude API failed or timed out. Manual report may be needed.\n\n*Date:* {{ $('Parse Sync Page Content').item.json.sync_date }}\n*Issues queued:* {{ $('Filter Issues to Milestones').item.json.issue_count }}",
+        "otherOptions": {}
+      },
+      "id": "0c940089-09d9-470f-a96d-c5f04068b9cf",
+      "name": "Slack — Alert Claude Failed1",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        -2336,
+        736
+      ],
+      "webhookId": "43fc4bc5-69d0-499c-9c9f-584397dc692f",
+      "credentials": {
+        "slackApi": {
+          "id": "baNwqfsoC6JnS3f6",
+          "name": "Prerana's Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.text || '';\nconst cleaned = raw.replace(/^```json\\s*/i, '').replace(/^```\\s*/i, '').replace(/```\\s*$/i, '').trim();\n\nlet parsed;\ntry {\n  parsed = JSON.parse(cleaned);\n} catch(e) {\n  throw new Error('Claude output is not valid JSON: ' + cleaned.substring(0, 200));\n}\n\nconst syncDate = parsed.report_date || $('Parse Sync Page Content1').item.json.sync_date;\nconst dateFmt = syncDate ? syncDate.replace(/-/g, '') : 'UNKNOWN';\n\nreturn {\n  json: {\n    ...parsed,\n    slack_message: parsed.slack_summary || '',\n    pdf_filename: `AccountOS_EngDashboard_${dateFmt}.pdf`,\n    notion_title: `Product Report — ${syncDate}`,\n    sync_page_id: $('Parse Sync Page Content1').item.json.sync_page_id,\n    trend_data_block_id: $('Parse Report Config1').item.json.trend_data_block_id\n  }\n};"
+      },
+      "id": "4b7fbd34-d938-4d0b-bf06-d84b0d2f9e86",
+      "name": "Parse Claude Outputs1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2112,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "34252977-a13d-80d3-a778-c441fba32b77",
+          "mode": "list",
+          "cachedResultName": "Daily Product Reports",
+          "cachedResultUrl": "https://www.notion.so/34252977a13d80d3a778c441fba32b77"
+        },
+        "title": "={{ $('Parse Claude Outputs1').item.json.notion_title }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Date|date",
+              "date": "={{ $json.report_date }}"
+            },
+            {
+              "key": "Daily Product Sync|relation",
+              "relationValue": [
+                "={{ $json.sync_page_id }}"
+              ]
+            }
+          ]
+        },
+        "blockUi": {
+          "blockValues": []
+        },
+        "options": {}
+      },
+      "id": "794e9917-ff06-4d33-8013-240321728486",
+      "name": "Notion — Create Report Page1",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [
+        -1872,
+        496
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "L94qysHk5pGH8WOE",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt_content }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=You are an engineering dashboard data processor for the Account OS team at Sprouts. You receive pre-filtered Linear issue data, milestone config, cycle tracking settings, weekly trend history, and sync meeting highlights from an n8n workflow. Your job is to compute ALL metrics, generate ALL insights, and return a single complete JSON object — nothing else. No markdown, no explanation, no code fences.\n\nYou are the sole intelligence layer. The rendering system that consumes your output is dumb — it only draws what you give it. Every number, label, insight, color hint, and alert must be computed and included by you.\n\n---\n\n## INPUTS (provided in the user message)\n\n1. report_date — ISO date string\n2. config — active_milestones[], milestone_targets{}, cycle_milestone, show_next_cycle, report_settings{throughput_window, trend_history, roadmap_lookahead}, trend_data_json (array or null)\n3. issues — JSON array, each issue has: id, title, status, priority, assignee, labels[], project, projectMilestone, cycle{id,name,number,startsAt,endsAt}|null, dueDate|null, createdAt, updatedAt\n4. highlights_content — Section 6 from sync meeting (daily highlights)\n5. tomorrows_focus — Section 7 from sync meeting\n\n## STATUS DEFINITIONS (use exactly these)\n- Open = status in {Todo, In Progress, In Review, In QA/Acceptance}\n- Done = status in {Closed, Ready for Prod}\n- Excluded from open = Backlog, Canceled, Duplicate\n- Completion% = (Closed + Ready for Prod) / Total × 100\n\n---\n\n## STEP 1: PER-MILESTONE METRICS\n\nFor each milestone in config.active_milestones, compute:\n- total, closed, rfp (Ready for Prod), in_qa, in_review, in_progress, todo, backlog, canceled_dup\n- completion_pct = (closed + rfp) / total × 100, rounded to 1 decimal\n- open_count = in_qa + in_review + in_progress + todo (excludes backlog)\n- go_live_status: \"On track\" if completion_pct >= 90 AND no urgent open issues; else \"Not ready for go-live\"\n- target_date from config.milestone_targets\n\nArithmetic check: closed + rfp + in_qa + in_review + in_progress + todo + backlog + canceled_dup MUST equal total. If not, recount.\n\n---\n\n## STEP 2: OPEN ISSUES BY PRIORITY\n\nFrom ALL issues across milestones, keep only Open issues (exclude Backlog, Closed, RFP, Canceled, Duplicate).\n\nFor each priority tier (Urgent, High, Medium, Low, No Priority):\n- open = in_qa + in_progress + in_review + todo\n- individual counts for in_qa, in_progress, in_review, todo\n\nTOTAL row = direct count of all open issues. NOT sum of rows (to catch bugs).\n\n---\n\n## STEP 3: DEVELOPER THROUGHPUT (last 7 days)\n\nIssues where (status = \"In QA/Acceptance\" OR status = \"Closed\") AND updatedAt >= (report_date - 7 days).\nDeduplicate by issue id (an issue moving QA→Closed counts once).\nGroup by assignee. Count per assignee. Sort descending.\ntotal_throughput_7d = count of unique issue ids.\n\n---\n\n## STEP 4: DELIVERY ACCOUNTABILITY\n\nFrom all issues across milestones:\n- no_due_date_count = issues where dueDate is null\n- no_due_date_pct = no_due_date_count / total_issues × 100\n- overdue = open issues where dueDate < report_date\n- on_track_dated = open issues where dueDate >= report_date\n- urgent_no_date = open Urgent issues where dueDate is null\n\nOverdue delay buckets (days = report_date - dueDate):\n- bucket_1_3: 1–3 days overdue\n- bucket_4_7: 4–7 days overdue\n- bucket_7_plus: 7+ days overdue\n\nOverdue by assignee: [{ assignee, overdue_count, worst_delay_days, urgent_overdue_count }], sorted by overdue_count desc\nOverdue by milestone: [{ milestone, overdue_count }]\n\n---\n\n## STEP 5: LABEL × STATUS CROSS-TAB\n\nLabels to track: Defect, Improvement, Feature, Tech Internal, UAT Finding, Design, No Label.\nMulti-label issues: counted once per label they carry.\nFor each label: closed, rfp, in_qa, in_review, in_progress, todo, canceled_dup, total_for_label\n\nTOTAL row = direct status counts from full issue list (NOT sum of label rows).\nInclude footnote_text: \"Total row = direct status counts. Label rows may sum higher due to multi-label issues.\"\n\n---\n\n## STEP 6: ASSIGNEE WORKLOAD\n\nFrom all open issues (Open status only, excludes Backlog/Closed/RFP/Canceled/Dup):\nGroup by assignee. null assignee = \"Unassigned\".\nFor each: total_open, urgent, high, other (medium+low+no priority).\nSort by total_open desc. \"Unassigned\" always last.\nTOTAL row = arithmetic column sum (compute explicitly).\n\n---\n\n## STEP 7: CYCLE METRICS\n\nUse only issues where projectMilestone = config.cycle_milestone.\n\nCurrent cycle = cycle where startsAt <= report_date <= endsAt.\n\nIf current cycle found:\n- name, number, milestone, starts_at, ends_at\n- days_left = ceil((ends_at - report_date) in days)\n- cycle_duration_days = (ends_at - starts_at) in days\n- elapsed_pct = (report_date - starts_at) / cycle_duration_days × 100, rounded to 1 decimal\n- planned_count = issues with this cycle.id AND milestone = cycle_milestone\n- done_count = planned issues where status in {Closed, Ready for Prod}\n- completion_pct = done_count / planned_count × 100, rounded to 1 decimal\n- at_risk_count = open planned issues with priority in {Urgent, High}\n- behind_by_pp = elapsed_pct - completion_pct (positive = behind)\n- health_color: \"teal\" if behind_by_pp <= 5, \"amber\" if 5 < behind_by_pp <= 15, \"red\" if behind_by_pp > 15\n\nTop open in current cycle (max 5):\n- Filter: planned issues, Open status only (no Backlog)\n- Sort: priority rank (Urgent=1,High=2,Medium=3,Low=4,NoPriority=5), then status rank (InQA=1,InReview=2,InProgress=3,Todo=4), then updatedAt desc\n- For each: id, title (truncate to 40 chars + ellipsis if longer), owner (first name + last initial e.g. \"Rahul K\"), priority_short (Urg/Hi/Med/Lo/—), status_short (QA/Rev/Prog/Todo)\n\nIf no current cycle: set current_cycle to null.\n\nNext cycle (only if config.show_next_cycle = true):\n- Cycle with smallest startsAt > report_date, for cycle_milestone issues\n- name, starts_at, planned_count, urgent_count, unassigned_count\n- top_queued = top 3 issue ids by priority rank then createdAt asc\n\n---\n\n## STEP 8: WEEKLY INTAKE TREND\n\nCurrent week = Monday of report_date's week.\nCount issues created this week: created_urgent, created_high, created_medium_plus (medium+low+no priority combined).\n\nIf config.trend_data_json is not null:\n- Append/update current week entry\n- Keep last 8 weeks only\n- Set trend_available: true\n\nIf null (first run):\n- Reconstruct last 8 weeks from issue createdAt dates\n- Set trend_available: true, first_run: true\n\nOutput: weeks array [{ week_start (YYYY-MM-DD Monday), created_urgent, created_high, created_medium_plus }], sorted oldest first.\n\n---\n\n## STEP 9: INSIGHTS (HYBRID)\n\nClassify each line from highlights_content as: \"risk\", \"action\", or \"positive\" (default: \"positive\" if ambiguous).\nPolish for leadership: concise, specific, quantified where possible.\n\nAuto-generate the following and MERGE with sync highlights:\n\nCritical risks (auto):\n- If no_due_date_pct > 50: \"X% of issues have no due date — zero delivery predictability\"\n- Any milestone with completion_pct < 40 AND days to target <= 30: \"Milestone [name] at X% with Y days to target — insufficient velocity\"\n- If urgent_no_date >= 3: \"N urgent issues unassigned — immediate accountability gap\"  \n- If current_cycle AND behind_by_pp > 15 AND days_left <= 4: \"Cycle [name] behind by Npp — only M days remaining\"\n\nImmediate actions (auto):\n- If urgent_no_date > 0: \"Assign owners to N unassigned urgent tickets\"\n- If no_due_date_pct > 30: \"Mandate due dates on all in-progress issues — X% currently missing\"\n- Worst overdue assignee (if exists): \"Escalate: [name] has N overdue items (worst: X days)\"\n- If next_cycle AND (next_cycle.urgent_count >= 2 OR next_cycle.unassigned_count >= 3): \"Triage next cycle: N urgent / M unassigned in [name]\"\n\nPositive signals (auto):\n- If total_throughput_7d > 0: \"N issues moved to QA or closed in 7 days\"\n- If any milestone go_live_status = \"On track\": \"[Milestone] on track for target date\"\n\nRules: sync items appear first in their column. No duplicates. Max 4 per column.\n\n---\n\n## STEP 10: ALERTS (Slide 11)\n\nGenerate exactly 6 alert cards:\n- 2 red (critical): from risks, most severe first\n- 2 amber (action): from actions\n- 2 green (positive): from signals\n\nEach card: { severity: \"red\"|\"amber\"|\"green\", title: \"short bold phrase\", body: \"2–3 lines of context, leadership-friendly\" }\n\n---\n\n## OUTPUT SCHEMA\n\nReturn ONLY this JSON object. No text before or after. No markdown fences.\n\n{\n  \"report_date\": \"YYYY-MM-DD\",\n  \"cycle_label\": \"Cycle N (vX.X.X)\",\n  \"cycle_milestone\": \"vX.X or none\",\n\n  \"milestones\": [\n    {\n      \"name\": \"\",\n      \"target_date\": \"\",\n      \"total\": 0,\n      \"closed\": 0,\n      \"rfp\": 0,\n      \"in_qa\": 0,\n      \"in_review\": 0,\n      \"in_progress\": 0,\n      \"todo\": 0,\n      \"backlog\": 0,\n      \"canceled_dup\": 0,\n      \"open_count\": 0,\n      \"completion_pct\": 0.0,\n      \"go_live_status\": \"On track | Not ready for go-live\"\n    }\n  ],\n\n  \"priority_breakdown\": [\n    {\n      \"priority\": \"Urgent | High | Medium | Low | No Priority | TOTAL\",\n      \"open\": 0,\n      \"in_qa\": 0,\n      \"in_progress\": 0,\n      \"in_review\": 0,\n      \"todo\": 0\n    }\n  ],\n\n  \"label_breakdown\": [\n    {\n      \"label\": \"\",\n      \"closed\": 0, \"rfp\": 0, \"in_qa\": 0, \"in_review\": 0,\n      \"in_progress\": 0, \"todo\": 0, \"canceled_dup\": 0, \"total\": 0\n    }\n  ],\n  \"label_footnote\": \"Total row = direct status counts. Label rows may sum higher due to multi-label issues.\",\n\n  \"assignee_workload\": [\n    { \"assignee\": \"\", \"total_open\": 0, \"urgent\": 0, \"high\": 0, \"other\": 0 }\n  ],\n\n  \"throughput_7d\": [\n    { \"assignee\": \"\", \"count\": 0 }\n  ],\n  \"total_throughput_7d\": 0,\n\n  \"delivery\": {\n    \"no_due_date_count\": 0,\n    \"no_due_date_pct\": 0.0,\n    \"overdue_count\": 0,\n    \"on_track_dated_count\": 0,\n    \"urgent_no_date_count\": 0,\n    \"bucket_1_3\": 0,\n    \"bucket_4_7\": 0,\n    \"bucket_7_plus\": 0,\n    \"overdue_by_assignee\": [\n      { \"assignee\": \"\", \"overdue_count\": 0, \"worst_delay_days\": 0, \"urgent_overdue_count\": 0 }\n    ],\n    \"overdue_by_milestone\": [\n      { \"milestone\": \"\", \"overdue_count\": 0 }\n    ]\n  },\n\n  \"current_cycle\": {\n    \"name\": \"\",\n    \"number\": 0,\n    \"milestone\": \"\",\n    \"starts_at\": \"\",\n    \"ends_at\": \"\",\n    \"days_left\": 0,\n    \"elapsed_pct\": 0.0,\n    \"planned_count\": 0,\n    \"done_count\": 0,\n    \"completion_pct\": 0.0,\n    \"at_risk_count\": 0,\n    \"behind_by_pp\": 0.0,\n    \"health_color\": \"teal | amber | red\",\n    \"top_open\": [\n      { \"id\": \"\", \"title\": \"\", \"owner\": \"\", \"priority_short\": \"\", \"status_short\": \"\" }\n    ]\n  },\n\n  \"next_cycle\": {\n    \"name\": \"\",\n    \"starts_at\": \"\",\n    \"planned_count\": 0,\n    \"urgent_count\": 0,\n    \"unassigned_count\": 0,\n    \"top_queued\": [\"\", \"\", \"\"]\n  },\n\n  \"trend\": {\n    \"available\": true,\n    \"first_run\": false,\n    \"weeks\": [\n      { \"week_start\": \"YYYY-MM-DD\", \"created_urgent\": 0, \"created_high\": 0, \"created_medium_plus\": 0 }\n    ]\n  },\n\n  \"insights\": {\n    \"risks\": [\n      { \"source\": \"auto | sync\", \"text\": \"\" }\n    ],\n    \"actions\": [\n      { \"source\": \"auto | sync\", \"text\": \"\" }\n    ],\n    \"signals\": [\n      { \"source\": \"auto | sync\", \"text\": \"\" }\n    ]\n  },\n\n  \"alerts\": [\n    { \"severity\": \"red | amber | green\", \"title\": \"\", \"body\": \"\" }\n  ],\n\n  \"slack_summary\": \"\",\n\n  \"notion_blocks\": [\n    { \"type\": \"heading_2 | callout | paragraph\", \"icon\": \"🔴 | 🟡 | 🟢 (callout only)\", \"text\": \"\" }\n  ],\n\n  \"tomorrows_focus\": [\"\"],\n\n  \"trend_data_updated\": {\n    \"weeks\": [],\n    \"last_updated\": \"ISO datetime\"\n  },\n\n  \"metrics_summary\": {\n    \"total_open\": 0,\n    \"total_overdue\": 0,\n    \"throughput_7d\": 0\n  }\n}\n\nRULES:\n- current_cycle = null if no active cycle exists for cycle_milestone\n- next_cycle = null if show_next_cycle is false or no future cycle exists\n- slack_summary: under 500 chars, Slack mrkdwn (*bold*), one line per milestone, one cycle line (omit if null), tomorrows_focus lines, ends with \"Full report attached ↓\"\n- notion_blocks: omit empty sections, omit current cycle block if null, readable under 60 seconds\n- All percentages rounded to 1 decimal\n- No issue IDs in insights, alerts, slack_summary, or notion_blocks\n- Return ONLY the JSON. Absolutely nothing else."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -2928,
+        496
+      ],
+      "id": "db83617b-8c0e-4388-a5c9-57d097bc803c",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAwsBedrock",
+      "typeVersion": 1.1,
+      "position": [
+        -3008,
+        704
+      ],
+      "id": "b4202696-d17b-4bd2-b485-237c6b4ddb42",
+      "name": "AWS Bedrock Chat Model",
+      "credentials": {
+        "aws": {
+          "id": "FLj0MPpk3emCV9R7",
+          "name": "AWS (IAM) account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "34252977-a13d-8066-af1d-dc49755354e2",
+          "mode": "list",
+          "cachedResultName": "Daily Product Sync",
+          "cachedResultUrl": "https://www.notion.so/34252977a13d8066af1ddc49755354e2"
+        },
+        "simple": false,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Report Sent|checkbox",
+              "condition": "equals"
+            },
+            {
+              "key": "Sync Status|select",
+              "condition": "equals",
+              "selectValue": "Complete"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -5744,
+        496
+      ],
+      "id": "0ed38375-a5ac-455d-80e3-e6beebe13d9e",
+      "name": "Get many database pages",
+      "credentials": {
+        "notionApi": {
+          "id": "L94qysHk5pGH8WOE",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -5984,
+        496
+      ],
+      "id": "799e0cc9-fe1e-44ba-a6b1-986dfcddb276",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Get many database pages').item.json.id }}",
+          "mode": "id"
+        }
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -5056,
+        624
+      ],
+      "id": "ec2d20ef-29e9-43f6-bb7c-7e6ec6c307e1",
+      "name": "Get a database page",
+      "credentials": {
+        "notionApi": {
+          "id": "L94qysHk5pGH8WOE",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linear.app/graphql",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "****REDACTED_LINEAR_API_KEY****"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "query{issues(filter:{team:{name:{eq:\"Account OS\"}}} first:250){pageInfo{hasNextPage endCursor} nodes{id identifier title state{name} priority assignee{name} labels{nodes{name}} project{name} projectMilestone{name} cycle{id name number startsAt endsAt} dueDate createdAt updatedAt}}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -4336,
+        480
+      ],
+      "id": "c9541dd9-127c-44a5-880d-d2c06025bebf",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nconst response = $input.first().json;\nconst issues = response.data?.issues?.nodes || [];\nconst pageInfo = response.data?.issues?.pageInfo;\n\nreturn {\n  json: {\n    all_issues: issues,\n    total_fetched: issues.length,\n    hasNextPage: pageInfo?.hasNextPage,\n    endCursor: pageInfo?.endCursor\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4128,
+        480
+      ],
+      "id": "481957fc-eea0-4565-a9a9-66a8922fedf1",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst fs = require('fs');\n \n// Auto-install pptxgenjs if not present\nif (!fs.existsSync('/tmp/node_modules/pptxgenjs')) {\n  execSync('cd /tmp && npm install pptxgenjs 2>&1');\n}\n \nconst d = $('Parse Claude Outputs1').item.json;\nconst reportDate = d.report_date || '';\nconst dateFmt = (reportDate).replace(/-/g, '');\nconst outputPath = `/tmp/AccountOS_EngDashboard_${dateFmt}.pptx`;\n \n// Serialize data to pass into script\nconst dataJson = JSON.stringify(d).replace(/\\\\/g, '\\\\\\\\').replace(/`/g, '\\\\`');\n \nconst script = `\nconst PptxGenJS = require('/tmp/node_modules/pptxgenjs');\nconst fs = require('fs');\n \nconst d = JSON.parse(\\`${dataJson}\\`);\n \nconst C = {\n  navy:     '0D1B2A', darkCard: '0A2540', rowAlt:   '112240',\n  slate:    '334E68', slateL:   '94A3B8', white:    'FFFFFF',\n  teal:     '0D9488', teal2:    '5EEAD4', mint:     '6EE7B7',\n  green:    '22C55E', blue:     '3B82F6', purple:   'A855F7',\n  amber:    'F59E0B', red:      'EF4444', cyan:     '22D3EE',\n  orange:   'F97316', darkRed:  '7F1D1D', darkAmber:'78350F', darkGreen:'14532D',\n};\nconst W = 10, H = 5.63, FONT = 'Calibri';\nconst pct = (n) => parseFloat((n || 0).toFixed(1));\nconst shortName = (s) => s ? s.replace(/@sprouts\\\\.ai/, '').replace(/@.*/, '') : '—';\nconst priColor = (p) => ({'Urg':'EF4444','Urgent':'EF4444','Hi':'F59E0B','High':'F59E0B','Med':'3B82F6','Medium':'3B82F6','Lo':'94A3B8','Low':'94A3B8','—':'94A3B8','No Priority':'94A3B8'})[p] || '94A3B8';\n \nconst pptx = new PptxGenJS();\npptx.layout = 'LAYOUT_16x9';\npptx.author = 'Sprouts AccountOS';\n \nconst addFooter = (slide, rightText) => {\n  slide.addShape(pptx.ShapeType.rect, { x:0, y:H-0.22, w:W, h:0.22, fill:{color:C.teal} });\n  slide.addText('Sprouts · Account OS · Engineering Dashboard', { x:0.15, y:H-0.21, w:5, h:0.2, fontSize:7, color:C.navy, fontFace:FONT, bold:true });\n  slide.addText(rightText||'', { x:5, y:H-0.21, w:4.8, h:0.2, fontSize:7, color:C.navy, fontFace:FONT, align:'right' });\n};\nconst sectionLabel = (slide, text, x, y) => {\n  slide.addText(text, { x, y, w:9, h:0.2, fontSize:8, bold:true, color:C.teal2, fontFace:FONT, charSpacing:2 });\n};\n \nconst cc = d.current_cycle || null;\nconst nc = d.next_cycle || null;\nconst milestones = d.milestones || [];\nconst insights = d.insights || { risks:[], actions:[], signals:[] };\nconst alerts = d.alerts || [];\nconst delivery = d.delivery || {};\nconst priorityBreakdown = d.priority_breakdown || [];\nconst labelBreakdown = d.label_breakdown || [];\nconst assigneeWorkload = d.assignee_workload || [];\nconst throughput7d = d.throughput_7d || [];\nconst trendWeeks = (d.trend && d.trend.weeks ? d.trend.weeks : []).slice(-8);\n \n// ── SLIDE 1 ──────────────────────────────────────────────────\nconst s1 = pptx.addSlide();\ns1.background = { color: C.navy };\ns1.addShape(pptx.ShapeType.rect, { x:0, y:0, w:4.8, h:H, fill:{color:C.darkCard} });\ns1.addText('Account OS', { x:0.4, y:1.3, w:4, h:0.55, fontSize:34, bold:true, color:C.white, fontFace:FONT });\ns1.addText('Engineering Dashboard', { x:0.4, y:1.9, w:4, h:0.35, fontSize:20, color:C.slateL, fontFace:FONT });\ns1.addShape(pptx.ShapeType.rect, { x:0.4, y:2.35, w:1.0, h:0.04, fill:{color:C.teal} });\ns1.addText('Sprouts — Account OS Engineering', { x:0.4, y:2.5, w:4, h:0.22, fontSize:10, color:C.slateL, fontFace:FONT });\ns1.addText(d.report_date + ' · Confidential', { x:0.4, y:2.75, w:4, h:0.2, fontSize:9, color:C.slate, fontFace:FONT });\nconst tags = [milestones.length + ' Active milestone' + (milestones.length !== 1 ? 's' : ''), 'Linear data', cc ? 'Cycle ' + cc.name + ' in flight' : 'No active cycle'];\ntags.forEach(function(t, i) {\n  s1.addShape(pptx.ShapeType.roundRect, { x:0.4+i*1.35, y:3.5, w:1.28, h:0.22, fill:{color:C.darkCard}, line:{color:C.slate,width:0.5}, rectRadius:0.05 });\n  s1.addText(t, { x:0.4+i*1.35, y:3.5, w:1.28, h:0.22, fontSize:7, color:C.slateL, fontFace:FONT, align:'center' });\n});\nsectionLabel(s1, 'ACTIVE MILESTONES', 5.1, 0.4);\nmilestones.forEach(function(ms, i) {\n  const cy = 0.75 + i * 1.55;\n  const bColor = ms.go_live_status === 'On track' ? C.green : C.red;\n  s1.addShape(pptx.ShapeType.roundRect, { x:5.1, y:cy, w:4.7, h:1.42, fill:{color:C.darkCard}, line:{color:C.slate,width:0.3}, rectRadius:0.08 });\n  s1.addShape(pptx.ShapeType.rect, { x:5.1, y:cy, w:0.06, h:1.42, fill:{color:bColor} });\n  s1.addText(ms.name, { x:5.25, y:cy+0.08, w:2.5, h:0.28, fontSize:14, bold:true, color:C.white, fontFace:FONT });\n  const badgeBg = ms.go_live_status === 'On track' ? C.darkGreen : C.darkRed;\n  const badgeText = ms.go_live_status === 'On track' ? C.mint : 'FCA5A5';\n  s1.addShape(pptx.ShapeType.roundRect, { x:7.6, y:cy+0.1, w:2.1, h:0.22, fill:{color:badgeBg}, rectRadius:0.04 });\n  s1.addText(ms.go_live_status, { x:7.6, y:cy+0.1, w:2.1, h:0.22, fontSize:8, bold:true, color:badgeText, fontFace:FONT, align:'center' });\n  s1.addText('Target: ' + ms.target_date + '  ·  ' + ms.completion_pct + '%  ·  ' + ms.total + ' issues', { x:5.25, y:cy+0.38, w:4.4, h:0.18, fontSize:9, color:C.slateL, fontFace:FONT });\n  s1.addShape(pptx.ShapeType.rect, { x:5.25, y:cy+0.6, w:4.4, h:0.1, fill:{color:C.rowAlt} });\n  if (ms.completion_pct > 0) s1.addShape(pptx.ShapeType.rect, { x:5.25, y:cy+0.6, w:4.4*Math.min(ms.completion_pct/100,1), h:0.1, fill:{color:bColor} });\n  [{v:ms.rfp,l:'Ready for Prod',c:C.cyan},{v:ms.in_qa,l:'In QA',c:C.purple},{v:ms.in_progress,l:'In Progress',c:C.blue},{v:ms.todo,l:'Todo',c:C.amber}].forEach(function(st, j) {\n    const sx = 5.25 + j * 1.1;\n    s1.addText(String(st.v), { x:sx, y:cy+0.82, w:1.0, h:0.3, fontSize:17, bold:true, color:st.c, fontFace:FONT, align:'center' });\n    s1.addText(st.l, { x:sx, y:cy+1.13, w:1.0, h:0.16, fontSize:7, color:C.slateL, fontFace:FONT, align:'center' });\n  });\n});\naddFooter(s1, 'Title · ' + d.report_date);\n \n// ── SLIDE 2 ──────────────────────────────────────────────────\nconst s2 = pptx.addSlide();\ns2.background = { color: C.navy };\ns2.addText('Executive Summary', { x:0.3, y:0.12, w:7, h:0.35, fontSize:18, bold:true, color:C.white, fontFace:FONT });\ns2.addText(d.report_date, { x:7, y:0.12, w:2.7, h:0.35, fontSize:10, color:C.slateL, fontFace:FONT, align:'right' });\n[\n  { title:'CRITICAL RISKS', items:insights.risks, bg:C.darkRed, dot:C.red, textColor:'FCA5A5' },\n  { title:'IMMEDIATE ACTIONS', items:insights.actions, bg:C.darkAmber, dot:C.amber, textColor:'FCD34D' },\n  { title:'POSITIVE SIGNALS', items:insights.signals, bg:C.darkGreen, dot:C.green, textColor:'86EFAC' },\n].forEach(function(col, i) {\n  const cx = 0.3 + i * 3.23;\n  s2.addShape(pptx.ShapeType.rect, { x:cx, y:0.6, w:3.1, h:0.28, fill:{color:col.bg} });\n  s2.addText(col.title, { x:cx+0.1, y:0.6, w:3.0, h:0.28, fontSize:9, bold:true, color:col.textColor, fontFace:FONT });\n  s2.addShape(pptx.ShapeType.rect, { x:cx, y:0.88, w:3.1, h:4.3, fill:{color:C.darkCard} });\n  col.items.slice(0,4).forEach(function(item, j) {\n    const ty = 0.96 + j * 0.88;\n    s2.addShape(pptx.ShapeType.ellipse, { x:cx+0.12, y:ty+0.04, w:0.1, h:0.1, fill:{color:col.dot} });\n    s2.addText(item.text, { x:cx+0.28, y:ty, w:2.75, h:0.82, fontSize:9.5, color:'CBD5E1', fontFace:FONT, wrap:true, valign:'top' });\n  });\n});\naddFooter(s2, 'Executive Summary · ' + d.report_date);\n \n// ── SLIDE 3 ──────────────────────────────────────────────────\nconst s3 = pptx.addSlide();\ns3.background = { color: C.navy };\ns3.addText('Milestone Progress Overview', { x:0.3, y:0.12, w:7, h:0.35, fontSize:18, bold:true, color:C.white, fontFace:FONT });\ns3.addText(d.report_date, { x:7, y:0.12, w:2.7, h:0.35, fontSize:10, color:C.slateL, fontFace:FONT, align:'right' });\nsectionLabel(s3, 'STATUS BREAKDOWN — ALL ACTIVE MILESTONES', 0.3, 0.6);\nconst barColors = [C.green, C.cyan, C.purple, C.blue, C.amber, C.slateL];\nconst barLabels = ['Closed','Ready for Prod','In QA','In Progress','Todo','Canceled/Dup'];\nconst barH = 0.32, barGap = 0.18;\nlet barsEndY = 0.85;\nmilestones.forEach(function(ms, i) {\n  const by = barsEndY + i * (barH + barGap);\n  const segments = [ms.closed, ms.rfp, ms.in_qa, ms.in_progress, ms.todo, ms.canceled_dup];\n  const total = ms.total || 1;\n  s3.addText(ms.name, { x:0.3, y:by-0.18, w:9, h:0.18, fontSize:9, bold:true, color:C.teal2, fontFace:FONT });\n  let offsetX = 0.3;\n  segments.forEach(function(seg, j) {\n    const segW = (seg / total) * 9.0;\n    if (segW > 0.01) {\n      s3.addShape(pptx.ShapeType.rect, { x:offsetX, y:by, w:segW, h:barH, fill:{color:barColors[j]} });\n      if (segW > 0.3) s3.addText(String(seg), { x:offsetX, y:by, w:segW, h:barH, fontSize:8, color:C.navy, fontFace:FONT, align:'center', valign:'middle', bold:true });\n      offsetX += segW;\n    }\n  });\n  barsEndY = by;\n});\nbarsEndY += barH + 0.1;\nbarLabels.forEach(function(lbl, i) {\n  const lx = 0.3 + i * 1.55;\n  s3.addShape(pptx.ShapeType.rect, { x:lx, y:barsEndY+0.05, w:0.14, h:0.14, fill:{color:barColors[i]} });\n  s3.addText(lbl, { x:lx+0.18, y:barsEndY+0.04, w:1.3, h:0.16, fontSize:8, color:C.slateL, fontFace:FONT });\n});\nbarsEndY += 0.35;\nconst ptY = barsEndY + 0.25;\nsectionLabel(s3, 'OPEN BY PRIORITY', 0.3, ptY);\nconst ptHeaders = ['Priority','Open','In QA','In Prog','In Review','Todo'];\nconst ptColW = [1.6, 0.9, 0.9, 0.9, 0.9, 0.9];\nconst ptRowH = 0.28;\nconst ptStartY = ptY + 0.22;\nlet ptX = 0.3;\nptHeaders.forEach(function(h, i) {\n  s3.addShape(pptx.ShapeType.rect, { x:ptX, y:ptStartY, w:ptColW[i], h:ptRowH, fill:{color:C.darkCard} });\n  s3.addText(h, { x:ptX+0.05, y:ptStartY, w:ptColW[i], h:ptRowH, fontSize:9, bold:true, color:C.teal2, fontFace:FONT, valign:'middle' });\n  ptX += ptColW[i];\n});\npriorityBreakdown.forEach(function(row, ri) {\n  const ry = ptStartY + (ri+1) * ptRowH;\n  const isTotal = row.priority === 'TOTAL';\n  const rowBg = isTotal ? C.darkCard : (ri % 2 === 0 ? C.navy : C.rowAlt);\n  ptX = 0.3;\n  [row.priority, row.open, row.in_qa, row.in_progress, row.in_review, row.todo].forEach(function(cell, ci) {\n    s3.addShape(pptx.ShapeType.rect, { x:ptX, y:ry, w:ptColW[ci], h:ptRowH, fill:{color:rowBg} });\n    const cellColor = isTotal ? C.mint : (ci === 0 ? priColor(String(cell)) : C.white);\n    s3.addText(String(cell), { x:ptX+0.05, y:ry, w:ptColW[ci], h:ptRowH, fontSize:9, color:cellColor, fontFace:FONT, valign:'middle', bold:isTotal });\n    ptX += ptColW[ci];\n  });\n});\naddFooter(s3, 'Milestone Progress · ' + d.report_date);\n \n// ── SLIDE 4 ──────────────────────────────────────────────────\nconst s4 = pptx.addSlide();\ns4.background = { color: C.navy };\ns4.addText('Cycle Focus', { x:0.3, y:0.12, w:7, h:0.35, fontSize:18, bold:true, color:C.white, fontFace:FONT });\ns4.addText('Current cycle · ' + d.report_date, { x:7, y:0.12, w:2.7, h:0.35, fontSize:10, color:C.slateL, fontFace:FONT, align:'right' });\nif (!cc) {\n  s4.addShape(pptx.ShapeType.roundRect, { x:2, y:1.5, w:6, h:1.5, fill:{color:C.darkCard}, rectRadius:0.1 });\n  s4.addText('No active cycle for ' + (d.cycle_milestone || 'configured milestone'), { x:2, y:1.7, w:6, h:0.4, fontSize:14, color:C.slateL, fontFace:FONT, align:'center' });\n  if (nc) s4.addText('Next: ' + nc.name + ' starts ' + (nc.starts_at||'').split('T')[0], { x:2, y:2.15, w:6, h:0.3, fontSize:11, color:C.teal2, fontFace:FONT, align:'center' });\n} else {\n  const cycleColor = cc.health_color === 'red' ? C.red : cc.health_color === 'amber' ? C.amber : C.teal;\n  sectionLabel(s4, 'CURRENT CYCLE', 0.3, 0.55);\n  s4.addShape(pptx.ShapeType.roundRect, { x:0.3, y:0.75, w:9.4, h:1.0, fill:{color:C.darkCard}, rectRadius:0.08 });\n  s4.addShape(pptx.ShapeType.rect, { x:0.3, y:0.75, w:0.07, h:1.0, fill:{color:C.teal} });\n  s4.addText(cc.name + ' · ' + cc.milestone, { x:0.48, y:0.82, w:5, h:0.28, fontSize:14, bold:true, color:C.white, fontFace:FONT });\n  s4.addText((cc.starts_at||'').split('T')[0] + ' → ' + (cc.ends_at||'').split('T')[0] + ' · ' + cc.days_left + ' days left', { x:0.48, y:1.12, w:5, h:0.2, fontSize:9, color:C.slateL, fontFace:FONT });\n  [{v:cc.planned_count,l:'Planned',c:C.teal2},{v:cc.done_count,l:cc.completion_pct+'% complete',c:C.green},{v:cc.at_risk_count,l:'At risk',c:C.amber}].forEach(function(st, i) {\n    s4.addText(String(st.v), { x:5.8+i*1.3, y:0.82, w:1.2, h:0.32, fontSize:20, bold:true, color:st.c, fontFace:FONT, align:'center' });\n    s4.addText(st.l, { x:5.8+i*1.3, y:1.15, w:1.2, h:0.18, fontSize:7.5, color:C.slateL, fontFace:FONT, align:'center' });\n  });\n  // Burn chart\n  s4.addShape(pptx.ShapeType.roundRect, { x:0.3, y:1.88, w:4.5, h:1.55, fill:{color:C.darkCard}, rectRadius:0.06 });\n  s4.addText('BURN vs EXPECTED', { x:0.45, y:1.93, w:4, h:0.18, fontSize:8, bold:true, color:C.teal2, fontFace:FONT, charSpacing:1 });\n  s4.addText('Expected · ' + cc.elapsed_pct + '% done', { x:0.45, y:2.18, w:4, h:0.16, fontSize:8, color:C.slateL, fontFace:FONT });\n  s4.addShape(pptx.ShapeType.rect, { x:0.45, y:2.36, w:4.1, h:0.18, fill:{color:C.rowAlt} });\n  s4.addShape(pptx.ShapeType.rect, { x:0.45, y:2.36, w:4.1*Math.min(cc.elapsed_pct/100,1), h:0.18, fill:{color:C.slate} });\n  s4.addText('Actual · ' + cc.completion_pct + '% done', { x:0.45, y:2.6, w:4, h:0.16, fontSize:8, color:C.slateL, fontFace:FONT });\n  s4.addShape(pptx.ShapeType.rect, { x:0.45, y:2.78, w:4.1, h:0.18, fill:{color:C.rowAlt} });\n  s4.addShape(pptx.ShapeType.rect, { x:0.45, y:2.78, w:4.1*Math.min(cc.completion_pct/100,1), h:0.18, fill:{color:cycleColor} });\n  const behindText = Math.abs(cc.behind_by_pp) <= 5 ? 'On pace' : 'Behind by ' + cc.behind_by_pp + 'pp';\n  s4.addText(behindText, { x:0.45, y:3.02, w:4, h:0.18, fontSize:9, color:cycleColor, fontFace:FONT, bold:true });\n  s4.addText(cc.days_left + 'd left · ' + cc.done_count + ' of ' + cc.planned_count + ' done · ' + cc.at_risk_count + ' at risk', { x:0.45, y:3.22, w:4, h:0.16, fontSize:8, color:C.slateL, fontFace:FONT });\n  // Top open table\n  s4.addText('TOP OPEN IN CURRENT CYCLE', { x:5.0, y:1.93, w:4.5, h:0.18, fontSize:8, bold:true, color:C.teal2, fontFace:FONT, charSpacing:1 });\n  const toHeaders = ['ID','Title','Owner','Pri','Stat'];\n  const toColW = [0.75, 1.95, 0.9, 0.45, 0.5];\n  const toRowH = 0.25;\n  let toX = 5.0;\n  toHeaders.forEach(function(h, i) {\n    s4.addShape(pptx.ShapeType.rect, { x:toX, y:2.16, w:toColW[i], h:toRowH, fill:{color:C.darkCard} });\n    s4.addText(h, { x:toX+0.03, y:2.16, w:toColW[i], h:toRowH, fontSize:8, bold:true, color:C.teal2, fontFace:FONT, valign:'middle' });\n    toX += toColW[i];\n  });\n  (cc.top_open || []).forEach(function(item, ri) {\n    const ry = 2.16 + (ri+1) * toRowH;\n    const rowBg = ri % 2 === 0 ? C.navy : C.rowAlt;\n    toX = 5.0;\n    [item.id, item.title, item.owner, item.priority_short, item.status_short].forEach(function(cell, ci) {\n      s4.addShape(pptx.ShapeType.rect, { x:toX, y:ry, w:toColW[ci], h:toRowH, fill:{color:rowBg} });\n      const cellColor = ci === 3 ? priColor(cell) : (ci === 0 ? C.slateL : C.white);\n      s4.addText(String(cell), { x:toX+0.03, y:ry, w:toColW[ci], h:toRowH, fontSize:8, color:cellColor, fontFace:FONT, valign:'middle' });\n      toX += toColW[ci];\n    });\n  });\n  // Next cycle\n  if (nc) {\n    s4.addShape(pptx.ShapeType.roundRect, { x:0.3, y:3.55, w:9.4, h:1.55, fill:{color:C.rowAlt}, rectRadius:0.08 });\n    s4.addShape(pptx.ShapeType.rect, { x:0.3, y:3.55, w:0.05, h:1.55, fill:{color:C.teal} });\n    s4.addText('NEXT CYCLE QUEUED', { x:0.45, y:3.6, w:9, h:0.18, fontSize:8, bold:true, color:C.teal2, fontFace:FONT, charSpacing:1 });\n    s4.addText(nc.name + ' · starts ' + (nc.starts_at||'').split('T')[0], { x:0.45, y:3.82, w:5, h:0.25, fontSize:12, bold:true, color:C.white, fontFace:FONT });\n    [{v:nc.planned_count,l:'Planned',c:C.teal2},{v:nc.urgent_count,l:'Urgent',c:C.red},{v:nc.unassigned_count,l:'Unassigned',c:C.amber}].forEach(function(st, i) {\n      s4.addText(String(st.v), { x:0.45+i*1.5, y:4.1, w:1.4, h:0.28, fontSize:18, bold:true, color:st.c, fontFace:FONT, align:'center' });\n      s4.addText(st.l, { x:0.45+i*1.5, y:4.4, w:1.4, h:0.18, fontSize:8, color:C.slateL, fontFace:FONT, align:'center' });\n    });\n    if (nc.top_queued && nc.top_queued.length) s4.addText('Top queued: ' + nc.top_queued.join(', '), { x:5.0, y:4.1, w:4.5, h:0.2, fontSize:9, color:C.slateL, fontFace:FONT });\n  }\n}\naddFooter(s4, 'Cycle Focus · ' + d.report_date);\n \n// ── SLIDE 5 ──────────────────────────────────────────────────\nconst s5 = pptx.addSlide();\ns5.background = { color: C.navy };\ns5.addText('Weekly Intake Trend', { x:0.3, y:0.12, w:7, h:0.35, fontSize:18, bold:true, color:C.white, fontFace:FONT });\ns5.addText('Last 8 weeks · ' + d.report_date, { x:7, y:0.12, w:2.7, h:0.35, fontSize:10, color:C.slateL, fontFace:FONT, align:'right' });\nconst chartX=0.3, chartY=0.7, chartW=5.6, chartH=4.2;\ns5.addShape(pptx.ShapeType.rect, { x:chartX, y:chartY, w:chartW, h:chartH, fill:{color:C.darkCard} });\nconst maxWeekTotal = Math.max.apply(null, trendWeeks.map(function(w){ return (w.created_urgent||0)+(w.created_high||0)+(w.created_medium_plus||0); }).concat([1]));\nconst barAreaH = chartH - 0.8;\nconst barAreaY = chartY + 0.3;\nconst barSlotW = chartW / Math.max(trendWeeks.length, 1);\ntrendWeeks.forEach(function(w, i) {\n  const total = (w.created_urgent||0)+(w.created_high||0)+(w.created_medium_plus||0);\n  const bx = chartX + i * barSlotW + barSlotW * 0.15;\n  const bw = barSlotW * 0.7;\n  let stackY = barAreaY + barAreaH;\n  [{v:w.created_urgent||0,c:C.red},{v:w.created_high||0,c:C.amber},{v:w.created_medium_plus||0,c:C.blue}].forEach(function(seg) {\n    if (seg.v > 0) {\n      const sh = (seg.v / maxWeekTotal) * barAreaH;\n      stackY -= sh;\n      s5.addShape(pptx.ShapeType.rect, { x:bx, y:stackY, w:bw, h:sh, fill:{color:seg.c} });\n    }\n  });\n  if (total > 0) s5.addText(String(total), { x:bx, y:barAreaY+barAreaH-(total/maxWeekTotal)*barAreaH-0.22, w:bw, h:0.2, fontSize:8, color:C.white, fontFace:FONT, align:'center' });\n  s5.addText((w.week_start||'').slice(5), { x:bx-0.1, y:chartY+chartH-0.32, w:barSlotW, h:0.22, fontSize:7.5, color:C.slateL, fontFace:FONT, align:'center' });\n});\n[{l:'Urgent',c:C.red},{l:'High',c:C.amber},{l:'Med+',c:C.blue}].forEach(function(lg, i) {\n  s5.addShape(pptx.ShapeType.rect, { x:chartX+0.2+i*1.1, y:chartY+0.1, w:0.12, h:0.12, fill:{color:lg.c} });\n  s5.addText(lg.l, { x:chartX+0.35+i*1.1, y:chartY+0.09, w:0.9, h:0.14, fontSize:8, color:C.slateL, fontFace:FONT });\n});\nconst totalIssues = milestones.reduce(function(s,m){ return s+(m.total||0); }, 0);\nsectionLabel(s5, 'CURRENT STATUS DISTRIBUTION', 6.1, 0.7);\ns5.addText(String(totalIssues) + ' total issues', { x:6.1, y:0.92, w:3.6, h:0.3, fontSize:16, bold:true, color:C.teal2, fontFace:FONT });\nconst distStats = [\n  {l:'Closed', v:milestones.reduce(function(s,m){return s+(m.closed||0);},0), c:C.green},\n  {l:'Ready for Prod', v:milestones.reduce(function(s,m){return s+(m.rfp||0);},0), c:C.cyan},\n  {l:'In QA', v:milestones.reduce(function(s,m){return s+(m.in_qa||0);},0), c:C.purple},\n  {l:'In Progress', v:milestones.reduce(function(s,m){return s+(m.in_progress||0);},0), c:C.blue},\n  {l:'Todo', v:milestones.reduce(function(s,m){return s+(m.todo||0);},0), c:C.amber},\n  {l:'Canceled/Dup', v:milestones.reduce(function(s,m){return s+(m.canceled_dup||0);},0), c:C.slateL},\n];\ndistStats.forEach(function(st, i) {\n  const dy = 1.3 + i * 0.55;\n  const pctVal = totalIssues ? st.v/totalIssues : 0;\n  s5.addText(st.l, { x:6.1, y:dy, w:2, h:0.2, fontSize:10, color:'CBD5E1', fontFace:FONT });\n  s5.addText(st.v + ' · ' + (pctVal*100).toFixed(1) + '%', { x:8.0, y:dy, w:1.65, h:0.2, fontSize:10, color:st.c, fontFace:FONT, bold:true, align:'right' });\n  s5.addShape(pptx.ShapeType.rect, { x:6.1, y:dy+0.22, w:3.55, h:0.08, fill:{color:C.rowAlt} });\n  if (pctVal > 0) s5.addShape(pptx.ShapeType.rect, { x:6.1, y:dy+0.22, w:3.55*pctVal, h:0.08, fill:{color:st.c} });\n});\naddFooter(s5, 'Weekly Intake Trend · ' + d.report_date);\n \n// ── SLIDE 6 ──────────────────────────────────────────────────\nconst s6 = pptx.addSlide();\ns6.background = { color: C.navy };\ns6.addText('Delivery Date Accountability', { x:0.3, y:0.12, w:7, h:0.35, fontSize:18, bold:true, color:C.white, fontFace:FONT });\ns6.addText('All active milestones · ' + d.report_date, { x:7, y:0.12, w:2.7, h:0.35, fontSize:10, color:C.slateL, fontFace:FONT, align:'right' });\n[\n  {v:(delivery.no_due_date_pct||0).toFixed(1)+'%', l:'No Due Date ('+(delivery.no_due_date_count||0)+')', c:C.red},\n  {v:delivery.overdue_count||0, l:'Overdue', c:C.amber},\n  {v:delivery.on_track_dated_count||0, l:'On Track (dated)', c:C.slateL},\n  {v:delivery.urgent_no_date_count||0, l:'Urgent — No Date', c:C.red},\n].forEach(function(card, i) {\n  const cx = 0.3 + i * 2.38;\n  s6.addShape(pptx.ShapeType.roundRect, { x:cx, y:0.62, w:2.2, h:0.9, fill:{color:C.darkCard}, rectRadius:0.06 });\n  s6.addShape(pptx.ShapeType.rect, { x:cx, y:0.62, w:0.06, h:0.9, fill:{color:card.c} });\n  s6.addText(String(card.v), { x:cx+0.15, y:0.68, w:2.0, h:0.42, fontSize:24, bold:true, color:card.c, fontFace:FONT });\n  s6.addText(card.l, { x:cx+0.15, y:1.1, w:2.0, h:0.2, fontSize:9, color:C.slateL, fontFace:FONT });\n});\nsectionLabel(s6, 'OVERDUE BY DELAY BUCKET', 0.3, 1.72);\n[{v:delivery.bucket_1_3||0,l:'1–3 days',c:C.amber},{v:delivery.bucket_4_7||0,l:'4–7 days',c:C.orange},{v:delivery.bucket_7_plus||0,l:'7+ days',c:C.red}].forEach(function(b, i) {\n  const bx = 0.3 + i * 1.6;\n  s6.addShape(pptx.ShapeType.roundRect, { x:bx, y:1.95, w:1.45, h:0.7, fill:{color:C.darkCard}, rectRadius:0.06 });\n  s6.addText(String(b.v), { x:bx, y:2.0, w:1.45, h:0.35, fontSize:22, bold:true, color:b.c, fontFace:FONT, align:'center' });\n  s6.addText(b.l, { x:bx, y:2.35, w:1.45, h:0.2, fontSize:8.5, color:C.slateL, fontFace:FONT, align:'center' });\n});\nsectionLabel(s6, 'OVERDUE BY MILESTONE', 0.3, 2.82);\n(delivery.overdue_by_milestone || []).forEach(function(m, i) {\n  const mx = 0.3 + i * 1.6;\n  s6.addShape(pptx.ShapeType.roundRect, { x:mx, y:3.05, w:1.45, h:0.6, fill:{color:C.darkCard}, rectRadius:0.06 });\n  s6.addText(String(m.overdue_count), { x:mx, y:3.08, w:1.45, h:0.3, fontSize:20, bold:true, color:C.red, fontFace:FONT, align:'center' });\n  s6.addText(m.milestone, { x:mx, y:3.38, w:1.45, h:0.2, fontSize:8.5, color:C.slateL, fontFace:FONT, align:'center' });\n});\nsectionLabel(s6, 'OVERDUE BY ASSIGNEE', 5.2, 1.72);\nconst oaHeaders = ['Assignee','Overdue','Worst','Urgent'];\nconst oaColW = [2.0, 0.75, 0.75, 0.7];\nconst oaRowH = 0.26;\nlet oaX = 5.2;\noaHeaders.forEach(function(h, i) {\n  s6.addShape(pptx.ShapeType.rect, { x:oaX, y:1.95, w:oaColW[i], h:oaRowH, fill:{color:C.darkCard} });\n  s6.addText(h, { x:oaX+0.04, y:1.95, w:oaColW[i], h:oaRowH, fontSize:8.5, bold:true, color:C.teal2, fontFace:FONT, valign:'middle' });\n  oaX += oaColW[i];\n});\n(delivery.overdue_by_assignee || []).forEach(function(row, ri) {\n  const ry = 1.95 + (ri+1) * oaRowH;\n  oaX = 5.2;\n  [shortName(row.assignee), row.overdue_count, row.worst_delay_days+'d', row.urgent_overdue_count].forEach(function(cell, ci) {\n    s6.addShape(pptx.ShapeType.rect, { x:oaX, y:ry, w:oaColW[ci], h:oaRowH, fill:{color:ri%2===0?C.navy:C.rowAlt} });\n    s6.addText(String(cell), { x:oaX+0.04, y:ry, w:oaColW[ci], h:oaRowH, fontSize:8.5, color:ci>0?C.amber:C.white, fontFace:FONT, valign:'middle' });\n    oaX += oaColW[ci];\n  });\n});\naddFooter(s6, 'Delivery Accountability · ' + d.report_date);\n \n// ── SLIDE 7 ──────────────────────────────────────────────────\nconst s7 = pptx.addSlide();\ns7.background = { color: C.navy };\ns7.addText('Issue Breakdown by Label × Status', { x:0.3, y:0.12, w:7, h:0.35, fontSize:18, bold:true, color:C.white, fontFace:FONT });\ns7.addText('All milestones · ' + d.report_date, { x:7, y:0.12, w:2.7, h:0.35, fontSize:10, color:C.slateL, fontFace:FONT, align:'right' });\nconst lbHeaders = ['Label','Closed','RFP','In QA','Review','In Prog','Todo','Can/Dup','Total'];\nconst lbHColors = [C.teal2, C.green, C.cyan, C.purple, C.slateL, C.blue, C.amber, C.slateL, C.white];\nconst lbColW = [1.5, 0.85, 0.75, 0.75, 0.75, 0.75, 0.75, 0.8, 0.75];\nconst lbRowH = 0.3;\nlet lbX = 0.3;\nlbHeaders.forEach(function(h, i) {\n  s7.addShape(pptx.ShapeType.rect, { x:lbX, y:0.62, w:lbColW[i], h:lbRowH, fill:{color:C.darkCard} });\n  s7.addText(h, { x:lbX+0.04, y:0.62, w:lbColW[i], h:lbRowH, fontSize:9, bold:true, color:lbHColors[i], fontFace:FONT, valign:'middle' });\n  lbX += lbColW[i];\n});\nlabelBreakdown.forEach(function(row, ri) {\n  const ry = 0.62 + (ri+1) * lbRowH;\n  const isTotal = row.label === 'TOTAL';\n  const rowBg = isTotal ? C.darkCard : (ri%2===0?C.navy:C.rowAlt);\n  lbX = 0.3;\n  [row.label, row.closed, row.rfp, row.in_qa, row.in_review, row.in_progress, row.todo, row.canceled_dup, row.total].forEach(function(cell, ci) {\n    s7.addShape(pptx.ShapeType.rect, { x:lbX, y:ry, w:lbColW[ci], h:lbRowH, fill:{color:rowBg} });\n    const cellColor = isTotal ? C.mint : (ci===0?C.white:lbHColors[ci]);\n    s7.addText(String(cell), { x:lbX+0.04, y:ry, w:lbColW[ci], h:lbRowH, fontSize:ci===0?9.5:9, color:cellColor, fontFace:FONT, valign:'middle', bold:isTotal });\n    lbX += lbColW[ci];\n  });\n});\ns7.addText(d.label_footnote || 'Total row = direct status counts. Label rows may sum higher due to multi-label issues.', { x:0.3, y:H-0.52, w:9.4, h:0.2, fontSize:8, color:C.slateL, fontFace:FONT, italic:true });\naddFooter(s7, 'Label × Status · ' + d.report_date);\n \n// ── SLIDE 8 ──────────────────────────────────────────────────\nconst s8 = pptx.addSlide();\ns8.background = { color: C.navy };\ns8.addText('Developer Throughput — Issues Moved to QA / Closed', { x:0.3, y:0.12, w:8, h:0.35, fontSize:16, bold:true, color:C.white, fontFace:FONT });\ns8.addText('Last 7 days · ' + d.report_date, { x:7.5, y:0.12, w:2.2, h:0.35, fontSize:10, color:C.slateL, fontFace:FONT, align:'right' });\nconst thrChartX=0.3, thrChartY=0.65, thrChartW=5.5, thrChartH=4.0;\ns8.addShape(pptx.ShapeType.rect, { x:thrChartX, y:thrChartY, w:thrChartW, h:thrChartH, fill:{color:C.darkCard} });\nconst maxThr = Math.max.apply(null, throughput7d.map(function(t){return t.count;}).concat([1]));\nconst thrBarW = thrChartW / Math.max(throughput7d.length, 1);\nconst thrBarAreaH = thrChartH - 0.8;\nthroughput7d.forEach(function(t, i) {\n  const bx = thrChartX + i * thrBarW + thrBarW * 0.2;\n  const bw = thrBarW * 0.6;\n  const bh = (t.count / maxThr) * thrBarAreaH;\n  const by = thrChartY + 0.3 + (thrBarAreaH - bh);\n  s8.addShape(pptx.ShapeType.roundRect, { x:bx, y:by, w:bw, h:bh, fill:{color:C.teal}, rectRadius:0.04 });\n  s8.addText(String(t.count), { x:bx, y:by-0.22, w:bw, h:0.2, fontSize:10, bold:true, color:C.teal2, fontFace:FONT, align:'center' });\n  s8.addText(shortName(t.assignee), { x:bx-0.1, y:thrChartY+thrChartH-0.38, w:thrBarW, h:0.3, fontSize:8, color:C.slateL, fontFace:FONT, align:'center' });\n});\nsectionLabel(s8, 'QA + CLOSURE THROUGHPUT (7 DAYS)', 6.1, 0.65);\ns8.addText('Total: ' + (d.total_throughput_7d||0) + ' issues', { x:6.1, y:0.87, w:3.6, h:0.22, fontSize:11, color:C.teal2, fontFace:FONT, bold:true });\nthroughput7d.forEach(function(t, i) {\n  const dy = 1.18 + i * 0.72;\n  s8.addShape(pptx.ShapeType.roundRect, { x:6.1, y:dy, w:3.6, h:0.62, fill:{color:C.darkCard}, rectRadius:0.06 });\n  s8.addText(shortName(t.assignee), { x:6.2, y:dy+0.08, w:2.3, h:0.22, fontSize:11, bold:true, color:C.white, fontFace:FONT });\n  s8.addText(String(t.count), { x:9.0, y:dy+0.05, w:0.6, h:0.35, fontSize:22, bold:true, color:C.teal, fontFace:FONT, align:'right' });\n});\naddFooter(s8, 'Developer Throughput · ' + d.report_date);\n \n// ── SLIDE 9 ──────────────────────────────────────────────────\nconst s9 = pptx.addSlide();\ns9.background = { color: C.navy };\ns9.addText('Open Issue Workload by Assignee', { x:0.3, y:0.12, w:7, h:0.35, fontSize:18, bold:true, color:C.white, fontFace:FONT });\ns9.addText('All milestones · ' + d.report_date, { x:7, y:0.12, w:2.7, h:0.35, fontSize:10, color:C.slateL, fontFace:FONT, align:'right' });\nconst wlData = assigneeWorkload.filter(function(a){ return a.assignee !== 'TOTAL'; });\nconst maxWl = Math.max.apply(null, wlData.map(function(a){ return (a.urgent||0)+(a.high||0)+(a.other||0); }).concat([1]));\nconst wlChartX=0.3, wlChartY=0.62, wlChartW=5.5, wlChartH=4.2;\ns9.addShape(pptx.ShapeType.rect, { x:wlChartX, y:wlChartY, w:wlChartW, h:wlChartH, fill:{color:C.darkCard} });\nconst wlBarW = wlChartW / Math.max(wlData.length, 1);\nconst wlBarAreaH = wlChartH - 0.8;\nwlData.forEach(function(a, i) {\n  const total = (a.urgent||0)+(a.high||0)+(a.other||0);\n  const bx = wlChartX + i * wlBarW + wlBarW * 0.15;\n  const bw = wlBarW * 0.7;\n  let stackY = wlChartY + 0.3 + wlBarAreaH;\n  [{v:a.urgent||0,c:C.red},{v:a.high||0,c:C.amber},{v:a.other||0,c:C.blue}].forEach(function(seg) {\n    if (seg.v > 0) {\n      const sh = (seg.v/maxWl)*wlBarAreaH;\n      stackY -= sh;\n      s9.addShape(pptx.ShapeType.rect, { x:bx, y:stackY, w:bw, h:sh, fill:{color:seg.c} });\n    }\n  });\n  s9.addText(String(total), { x:bx, y:wlChartY+0.3+wlBarAreaH-(total/maxWl)*wlBarAreaH-0.2, w:bw, h:0.18, fontSize:8, color:C.white, fontFace:FONT, align:'center' });\n  s9.addText(shortName(a.assignee), { x:bx-0.1, y:wlChartY+wlChartH-0.35, w:wlBarW, h:0.28, fontSize:7.5, color:C.slateL, fontFace:FONT, align:'center' });\n});\n[{l:'Urgent',c:C.red},{l:'High',c:C.amber},{l:'Other',c:C.blue}].forEach(function(lg, i) {\n  s9.addShape(pptx.ShapeType.rect, { x:wlChartX+0.2+i*1.0, y:wlChartY+0.1, w:0.12, h:0.12, fill:{color:lg.c} });\n  s9.addText(lg.l, { x:wlChartX+0.36+i*1.0, y:wlChartY+0.09, w:0.8, h:0.14, fontSize:8, color:C.slateL, fontFace:FONT });\n});\nsectionLabel(s9, 'WORKLOAD BREAKDOWN', 6.1, 0.62);\nconst wlTHeaders = ['Assignee','Total','Urg','High','Other'];\nconst wlTColW = [1.55, 0.5, 0.5, 0.5, 0.55];\nconst wlTRowH = 0.26;\nlet wlTX = 6.1;\nwlTHeaders.forEach(function(h, i) {\n  s9.addShape(pptx.ShapeType.rect, { x:wlTX, y:0.85, w:wlTColW[i], h:wlTRowH, fill:{color:C.darkCard} });\n  s9.addText(h, { x:wlTX+0.03, y:0.85, w:wlTColW[i], h:wlTRowH, fontSize:8.5, bold:true, color:C.teal2, fontFace:FONT, valign:'middle' });\n  wlTX += wlTColW[i];\n});\nwlData.forEach(function(a, ri) {\n  const ry = 0.85 + (ri+1) * wlTRowH;\n  const isUnassigned = a.assignee === 'Unassigned';\n  wlTX = 6.1;\n  [shortName(a.assignee), a.total_open, a.urgent, a.high, a.other].forEach(function(cell, ci) {\n    s9.addShape(pptx.ShapeType.rect, { x:wlTX, y:ry, w:wlTColW[ci], h:wlTRowH, fill:{color:ri%2===0?C.navy:C.rowAlt} });\n    const cellColor = ci===0?(isUnassigned?C.amber:C.white):ci===2?C.red:ci===3?C.amber:C.white;\n    s9.addText(String(cell), { x:wlTX+0.03, y:ry, w:wlTColW[ci], h:wlTRowH, fontSize:8.5, color:cellColor, fontFace:FONT, valign:'middle' });\n    wlTX += wlTColW[ci];\n  });\n});\nconst totRow = assigneeWorkload.find(function(a){ return a.assignee === 'TOTAL'; });\nif (totRow) {\n  const tRy = 0.85 + (wlData.length+1) * wlTRowH;\n  wlTX = 6.1;\n  ['TOTAL', totRow.total_open, totRow.urgent, totRow.high, totRow.other].forEach(function(cell, ci) {\n    s9.addShape(pptx.ShapeType.rect, { x:wlTX, y:tRy, w:wlTColW[ci], h:wlTRowH, fill:{color:C.darkCard} });\n    s9.addText(String(cell), { x:wlTX+0.03, y:tRy, w:wlTColW[ci], h:wlTRowH, fontSize:8.5, color:C.mint, fontFace:FONT, valign:'middle', bold:true });\n    wlTX += wlTColW[ci];\n  });\n}\naddFooter(s9, 'Assignee Workload · ' + d.report_date);\n \n// ── SLIDE 10 ─────────────────────────────────────────────────\nconst s10 = pptx.addSlide();\ns10.background = { color: C.navy };\ns10.addText('Feature Roadmap', { x:0.3, y:0.12, w:7, h:0.35, fontSize:18, bold:true, color:C.white, fontFace:FONT });\ns10.addText('Next 30 days · ' + d.report_date, { x:7, y:0.12, w:2.7, h:0.35, fontSize:10, color:C.slateL, fontFace:FONT, align:'right' });\ns10.addShape(pptx.ShapeType.roundRect, { x:2.5, y:1.8, w:5, h:1.5, fill:{color:C.darkCard}, rectRadius:0.1 });\ns10.addText('Roadmap data source TBD', { x:2.5, y:2.0, w:5, h:0.4, fontSize:14, color:C.slateL, fontFace:FONT, align:'center' });\ns10.addText('Will be connected to Notion or Linear once decided.', { x:2.5, y:2.45, w:5, h:0.3, fontSize:10, color:C.slate, fontFace:FONT, align:'center' });\naddFooter(s10, 'Feature Roadmap · ' + d.report_date);\n \n// ── SLIDE 11 ─────────────────────────────────────────────────\nconst s11 = pptx.addSlide();\ns11.background = { color: C.navy };\ns11.addText('Alerts & Next Steps', { x:0.3, y:0.12, w:7, h:0.35, fontSize:18, bold:true, color:C.white, fontFace:FONT });\ns11.addText('Actions for leadership · ' + d.report_date, { x:7, y:0.12, w:2.7, h:0.35, fontSize:10, color:C.slateL, fontFace:FONT, align:'right' });\nconst alertCfg = {\n  red:   { bg:'3B1111', border:C.darkRed, title:'FCA5A5' },\n  amber: { bg:'3B2508', border:C.darkAmber, title:'FCD34D' },\n  green: { bg:'0A2E1E', border:C.darkGreen, title:'86EFAC' },\n};\nconst cardW=4.55, cardH=2.05, cardGap=0.12;\nalerts.slice(0,6).forEach(function(alert, i) {\n  const col = i%2, row = Math.floor(i/2);\n  const ax = 0.3 + col*(cardW+cardGap);\n  const ay = 0.62 + row*(cardH+cardGap);\n  const cfg = alertCfg[alert.severity] || alertCfg.green;\n  s11.addShape(pptx.ShapeType.roundRect, { x:ax, y:ay, w:cardW, h:cardH, fill:{color:cfg.bg}, line:{color:cfg.border,width:1}, rectRadius:0.08 });\n  s11.addShape(pptx.ShapeType.rect, { x:ax, y:ay, w:0.06, h:cardH, fill:{color:cfg.border} });\n  s11.addShape(pptx.ShapeType.ellipse, { x:ax+0.18, y:ay+0.16, w:0.12, h:0.12, fill:{color:cfg.title} });\n  s11.addText(alert.title, { x:ax+0.35, y:ay+0.1, w:cardW-0.5, h:0.3, fontSize:11, bold:true, color:cfg.title, fontFace:FONT });\n  s11.addText(alert.body, { x:ax+0.18, y:ay+0.45, w:cardW-0.35, h:cardH-0.55, fontSize:9, color:'CBD5E1', fontFace:FONT, wrap:true, valign:'top' });\n});\ns11.addText('Sprouts · Account OS · Dashboard for leadership · ' + d.report_date + ' · Confidential', { x:0, y:H-0.48, w:W, h:0.2, fontSize:8, color:C.slateL, fontFace:FONT, align:'center' });\naddFooter(s11, 'Alerts & Next Steps · ' + d.report_date);\n \n// ── WRITE ─────────────────────────────────────────────────────\npptx.writeFile({ fileName: '${outputPath}' }).then(function() {\n  console.log('done');\n}).catch(function(e) {\n  console.error('ERROR:', e.message);\n  process.exit(1);\n});\n`;\n \nfs.writeFileSync('/tmp/report_gen.js', script);\nconst result = execSync('node /tmp/report_gen.js 2>&1', { timeout: 60000 }).toString();\n \nif (!fs.existsSync(outputPath)) {\n  throw new Error('PPTX file not created. Script output: ' + result);\n}\n \nconst fileBuffer = fs.readFileSync(outputPath);\nconst base64Data = fileBuffer.toString('base64');\n \nreturn [{\n  json: {\n    pptx_filename: `AccountOS_EngDashboard_${dateFmt}.pptx`,\n    report_date: reportDate,\n    slack_message: d.slack_message,\n    notion_title: d.notion_title,\n    sync_page_id: d.sync_page_id,\n    trend_data_block_id: d.trend_data_block_id,\n    trend_data_updated: d.trend_data_updated,\n    file_path: outputPath,\n    script_result: result,\n  },\n  binary: {\n    data: {\n      data: base64Data,\n      mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',\n      fileName: `AccountOS_EngDashboard_${dateFmt}.pptx`,\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1456,
+        496
+      ],
+      "id": "b6d990a0-84a1-4f84-882f-fc6f2c7fbc4b",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/blocks/{{ $json.id }}/children",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"children\": {{ JSON.stringify($('Parse Claude Outputs1').item.json.notion_blocks.map(b => {\n    if (b.type === 'heading_2') {\n      return { object: 'block', type: 'heading_2', heading_2: { rich_text: [{ type: 'text', text: { content: b.text } }] } };\n    } else if (b.type === 'callout') {\n      return { object: 'block', type: 'callout', callout: { rich_text: [{ type: 'text', text: { content: b.text } }], icon: { type: 'emoji', emoji: b.icon || '📋' } } };\n    } else {\n      return { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: b.text } }] } };\n    }\n  })) }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1664,
+        496
+      ],
+      "id": "30fb44ec-0c02-4961-8bf8-af2b656f9666",
+      "name": "HTTP Request1",
+      "credentials": {
+        "notionApi": {
+          "id": "L94qysHk5pGH8WOE",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1264,
+        496
+      ],
+      "id": "83ac5eab-b254-48aa-a72f-806d7ff3ea47",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "w7Azimq3CFggvRic",
+          "name": "Google Drive account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Notion — Get Report Config1": {
+      "main": [
+        [
+          {
+            "node": "Parse Report Config1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Report Config1": {
+      "main": [
+        [
+          {
+            "node": "Get a database page",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion — Get Sync Page Content1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion — Get Sync Page Content1": {
+      "main": [
+        [
+          {
+            "node": "Parse Sync Page Content1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Sync Page Content1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Issues to Milestones1": {
+      "main": [
+        [
+          {
+            "node": "IF — Issues Found1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF — Issues Found1": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Data for Claude1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack — Alert No Issues Found1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Data for Claude1": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF — Claude Succeeded1": {
+      "main": [
+        [
+          {
+            "node": "Parse Claude Outputs1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack — Alert Claude Failed1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Outputs1": {
+      "main": [
+        [
+          {
+            "node": "Notion — Create Report Page1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion — Create Report Page1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "IF — Claude Succeeded1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AWS Bedrock Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many database pages": {
+      "main": [
+        [
+          {
+            "node": "Notion — Get Report Config1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many database pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a database page": {
+      "main": [
+        [
+          {
+            "node": "Parse Sync Page Content1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Filter Issues to Milestones1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a0be6738-0700-4d95-95a9-8937f8cd9d10",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1d141fcb2f55389ba450b124e1fd3c859ed8488fe4c85ce921ae26d82440b218"
+  },
+  "id": "6GWN5XRIs2C5ptjb",
+  "tags": []
+}
