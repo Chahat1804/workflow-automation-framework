@@ -1,0 +1,254 @@
+Delivered-To: bhomya224.be22@chitkara.edu.in
+Received: by 2002:ac8:5552:0:b0:50f:af14:eca0 with SMTP id o18csp1096562qtr;
+        Thu, 30 Apr 2026 11:34:02 -0700 (PDT)
+X-Received: by 2002:a05:6a00:4648:b0:781:2291:1045 with SMTP id d2e1a72fcca58-834fdb58993mr4651425b3a.8.1777574041976;
+        Thu, 30 Apr 2026 11:34:01 -0700 (PDT)
+ARC-Seal: i=2; a=rsa-sha256; t=1777574041; cv=pass;
+        d=google.com; s=arc-20240605;
+        b=jqe9SpBhTmFBjCj8BqWjh4YTcwaFkVOHYP34K+sdUW4/HZw35e6MRr5rUNmnyLHfA0
+         aFIEDAjHBfA7avxvs6JCRw78zM6atyCQ8paAE6x2/OuBnYOVmB/C2aohiLKYXERVv1zv
+         +lgq0udfLmMaoXq8SLNqH7ZzRQB+HfMaSOE4Wdtl5KDkezhpjFLJbcWlh5I1IAcZZV8l
+         vUWmB1/u3hHYm8DYYHwzuttl11ewCPIKKyJkv8DiPVCWaSFzugdv/Yy7eJGgWh2jtRvv
+         xfH7nREIH6yF0kYTQYPljkuu2z/zny8Mbxi8HCbHQizKBAxaYqGmO+1ORxmz4CjPTAC4
+         J67Q==
+ARC-Message-Signature: i=2; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=request-id:client-request-id:mime-version:date:subject:to:from
+         :dkim-signature:message-id;
+        bh=RNvMAjwQ8WMGF9KJ8SEnFCRZMXuw+n2LbSyl1K+lhuQ=;
+        fh=hQvN/v3iYIL/k07ZAtGuGZ0NOVxpUeSrUwyNASZvqSg=;
+        b=AN2Ju7hKoZJ3DcjU0sPs30yE5Per07Er1ToDrIvYd2eneFQFnW1yh80DokdQ4Ty71F
+         WOB7h53v+9JB1DPcZN9t2iFrowLEzKnYEPRg5PDclarQVWmLdTlH85RRBSmKiMQ+GrJb
+         82MqqXeosbWnAvyg1u/u4ygheUiqQtSHFU5jAtQqy95LYZiHOlSZUfcxC58d0zteYJUq
+         J/XXh+g0f75jJB9gSQYju1kLXyd7gjLroIVp/V7da9TFcxyBv7Zl4aByG/Hvm4RyZz++
+         2cqJvT9jN0qSLmZtx9tVIfAfzbYlOV+Hy6v3wUXu6qtFrvPLqZZteyLEwznS8jXqlqIl
+         q4jA==;
+        dara=google.com
+ARC-Authentication-Results: i=2; mx.google.com;
+       dkim=pass header.i=@msr-cmt.org header.s=s1024 header.b=FstsHJPn;
+       arc=pass (i=1);
+       spf=pass (google.com: domain of noreply@msr-cmt.org designates 2a01:111:f403:c000::1 as permitted sender) smtp.mailfrom=noreply@msr-cmt.org;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=msr-cmt.org
+Return-Path: <noreply@msr-cmt.org>
+Received: from BYAPR05CU005.outbound.protection.outlook.com (mail-westusazlp170100001.outbound.protection.outlook.com. [2a01:111:f403:c000::1])
+        by mx.google.com with ESMTPS id d2e1a72fcca58-83515b46ce1si771887b3a.129.2026.04.30.11.34.01
+        for <bhomya224.be22@chitkara.edu.in>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Thu, 30 Apr 2026 11:34:01 -0700 (PDT)
+Received-SPF: pass (google.com: domain of noreply@msr-cmt.org designates 2a01:111:f403:c000::1 as permitted sender) client-ip=2a01:111:f403:c000::1;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@msr-cmt.org header.s=s1024 header.b=FstsHJPn;
+       arc=pass (i=1);
+       spf=pass (google.com: domain of noreply@msr-cmt.org designates 2a01:111:f403:c000::1 as permitted sender) smtp.mailfrom=noreply@msr-cmt.org;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=msr-cmt.org
+Message-ID: <69f3a099.050a0220.110f78.945bSMTPIN_ADDED_BROKEN@mx.google.com>
+X-Google-Original-Message-ID: <[4fd0015c4b184963aeb1b2c159e65184-JFZGS42DN5WW25LONFRWC5DJN5XFA3DBORTG64TNFVIHE33EFVBEYMSQPRWXG4TDNV2HYRLNMFUWYVDFON2HYRLYN5JW25DQ@microsoft.com]>
+ARC-Seal: i=1; a=rsa-sha256; s=arcselector10001; d=microsoft.com; cv=none;
+ b=L0IsovgsfxMjHCmX7ZqLWmfEhiFG+MRSb/l1z2JMNg5HDtASgvoWKtxrqpYtph9fDJXG2+pNO4XtI/FFaxMhOV5fzBwqKtKlT+mn8qskNigDD4jbOL1W3Q4EQWHlduPsQ+bXO5Vf8qzJOzhDfyJPod4V9wjLTD9zWRICLX8voyTRybEjYcy00Vd/AUPngXiy5cVy4E/Fllbq6Mxr4D3SgeuMw/jRPEQwkDTSM9ocI89SzmkgP8cx5ffBIeH0rJ153Ks3ksE1xZ4XzMN+euw1ae6xOA3/grGl0Zqi9cQz/9Rm6+EpA50VCbp8Dn1PyuDuE5FB3gQE2ouvYwGf9dIyOQ==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=microsoft.com;
+ s=arcselector10001;
+ h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-AntiSpam-MessageData-ChunkCount:X-MS-Exchange-AntiSpam-MessageData-0:X-MS-Exchange-AntiSpam-MessageData-1;
+ bh=RNvMAjwQ8WMGF9KJ8SEnFCRZMXuw+n2LbSyl1K+lhuQ=;
+ b=xmIE1ZWjc0aQ00jNu59oF4Uvpor6Pgp8WcDyEph9nO+A7swd1R8CkqTHNeTvLcueuoFbUc/9V3Syr/BSiMDBanslIzny+xtWwqWlFCjylkFhTVs6BBUvXiCLC5KrmFw3HmPM5vgYcp3p/OHosJgHZ4nCbZ9/zbTFNRSlf0IdP4W/bKvG9RBCCEJQEx0lpZaAIyjPf/J2p9WESRKrautU+/JbRxPuY6YhqtGKj8CzQHH7C0yzmLrrXPR+jq2d4wKAL0WWQfgC1Mi1IsvqWPwWuweL/+Mgs7IOcS0LGgcPmr0LR3SFyPKZyDCYodfBPaIp/Xjyg3V22Dbjkiqth9OfAw==
+ARC-Authentication-Results: i=1; mx.microsoft.com 1; spf=none; dmarc=none;
+ dkim=none; arc=none
+Received: from substrate.office.com (2603:10b6:303:18d::13) by
+ MW4PR10MB5727.namprd10.prod.outlook.com with HTTP via
+ BL0PR0102CA0044.PROD.EXCHANGELABS.COM; Thu, 30 Apr 2026 18:34:00 +0000
+DKIM-Signature: v=1; a=rsa-sha256; d=msr-cmt.org; s=s1024; c=relaxed/relaxed;
+	t=1777574040; h=from:to:cc:subject:date:messageid;
+	bh=RNvMAjwQ8WMGF9KJ8SEnFCRZMXuw+n2LbSyl1K+lhuQ=;
+	b=FstsHJPnFc1MGSDe5UWOOissN70w0+mkmIpczdsufuZ2b2WOhg1nqYGaG2yyrIaRRlnXHiO5VJV
+	C76pgSJChWAGdQpJftrb4/RQf0kM0Elmutty5qrm44tfsjMeVKI/C8fGJzHISyRrzCmmIP7gePmX6
+	7vw5NHWG7O0aLmKr00s=
+From: Microsoft CMT <noreply@msr-cmt.org>
+To: bhomya224.be22@chitkara.edu.in
+Subject: IEEE Chandigarh Subsection International Conference : Submission
+ (1272) has been created.
+Date: Thu, 30 Apr 2026 18:34:00 +0000
+X-MS-Iris-MetaData: =?utf-8?q?{=22Type=22=3Anull=2C=22Fields=22=3A{=22InstanceID=22=3A=224fd0015c-4b18-4963-aeb1-?=
+ =?utf-8?q?b2c159e65184=22=2C=22ActivityID=22=3A=2214476a4f-30ab-4914-9be4-d28ca34cb?=
+ =?utf-8?q?a8c=22}}?=
+MIME-Version: 1.0
+X-TsbHttpDeliveryResponseType: Success
+Content-Type: multipart/alternative; boundary="=-nIqOwhSv111arWttonJI7Q=="
+X-MS-PublicTrafficType: Email
+client-request-id: 4fd0015c-4b18-4963-aeb1-b2c159e65184
+request-id: 4fd0015c-4b18-4963-aeb1-b2c159e65184
+Return-Path: noreply@msr-cmt.org
+X-MS-TrafficTypeDiagnostic: MW4PR10MB5727:EE_ICP
+X-MS-Exchange-SenderADCheck: 0
+X-MS-Exchange-AntiSpam-Relay: 0
+X-Microsoft-Antispam:
+	BCL:0;ARA:13230040|376014|69100299015|19092799006|7149299003|61400799027|13003099007|16102099003|18002099003|56012099003|8096899003|4076899003|14018399003|15920700032;
+X-Microsoft-Antispam-Message-Info:
+	lpog5al11hFOhx5XzayitbemJbSnR/hpPeBa8B/ZF9ChToQqxwrpqpi9lPma1oaUGUqvtb76+Ps4PV8ogMe0Sk2VQyWd00ATiwVU7af3bmFpAaAlqi8AvCQtRZ5CoU1XuWdTZFBe0lywxb5BRW/30PIdQh1sElzV3gQTCDtgcRYVIQVE9O7GTxQqCFSIfKlzQ15IuWXrsPIm0o184rV/sm8a3kRvRzGUi8l8fyImgvgQpq1AuSyE6ZH2VvO3LfErOteWJ/6YD/vd7MJEAW/F3CEx8AwWMc8WnVMD2MmHxcRzye3zOX/+ZuoA5H+pUWDYx85TzVDxLnPfK05GeG0GZOggHzhSbn3UfhC6PWHvkyanPu/mO2Oi7XuMr4Kl60hVXEKfgs5kD8ve+ZZM2nsh4ALm1h0Of93XauU97G7eEwP66FNWz5hUSbDOkYWHVPWzG6WrmN6E/MGiV2BQPowEMSSxRj+jLQ7psAnf62cf1/UPscsP6VOGM8rEo9aemKNtx6TcLBvYDu9nQsCnUlfPp5x4p9/r4fNoXvxp38OBLsBGI/1xYkI4dnESJnCbGR//ndKZ1/Ry0jJUVWnrYU80iVvs9VRdFZolD9NtUfWQnTLcMl242NWwgMlkcK/fpyiGSgDH3KHyK8alaplUrfMRxg==
+X-Forefront-Antispam-Report:
+	CIP:255.255.255.255;CTRY:;LANG:en;SCL:1;SRV:;IPV:NLI;SFV:NSPM;H:;PTR:;CAT:NONE;SFS:(13230040)(376014)(69100299015)(19092799006)(7149299003)(61400799027)(13003099007)(16102099003)(18002099003)(56012099003)(8096899003)(4076899003)(14018399003)(15920700032);DIR:OUT;SFP:1020;
+X-MS-Exchange-AntiSpam-MessageData-ChunkCount: 1
+X-MS-Exchange-AntiSpam-MessageData-0:
+	WXZ2gJkz5Tuwbrch4oJx0l5QABzBXltET2+iV6YinSE121WwBpLqbVb2GWth87rqehOeuoHU0CWSwi0yWJFH7HugQe06XS9aRE/QxLDq15xgfQQFAVbWqwKZ6qcDj+uU2ZOeCuy3pCYWuZ02g1qbFJutsvIUvju3fbe6J5MH7ci+PnifWIhM+hm4am8fpWIAVVGzUc8/ni1XbPGagksYTrrCKo2BtKjDdvhxqIMNSRxWx/Xb1MlgOVoNqyttJOUaI9QbQePBOqaPpaVukAvC1VfmGwBhTZqrmh0D059A80JRkubTmeJXSugDMune5FnONa9WHMwFHHQ3gd30YPH9CpgpmxPSKfdMW0R0gNexQtNqk0pcHl1AABfCrQ3VqTwhf+dqOf3aQ16+mGKVQCvy/hFV6jLrwEIuTTXMwt7DE6Qi2B7NrWronWu2iYw0W/yvmLN6Nqs/jSfduCBXQ7Sf0Ftj4Sxhv1YQ4uDT199a5RGW8ns8Yy3juI7hU1MKx+JiaQH9pbM2vGHRLhK6quEbPrrF5zajZFwHMvAUIsNO/mj8MWP2xY99UZiNqBIT2HY6NO5sjw3jo8oUqa4d2HzhzqyHQWUkf8PULoGCrReC/I0LFUEyNlGrJYg+ejeaVQJMghTRAp2xeWVfWyZTwTZ25ocnTC6oAePeUlUt8sjdrHgtKO4zAv+4NBo398drE9Bn
+X-OriginatorOrg: ideasprod09.onmicrosoft.com
+X-MS-Exchange-CrossTenant-AuthAs: Internal
+X-MS-Exchange-CrossTenant-AuthSource: HttpSubmission-MW4PR10MB5727
+X-MS-Exchange-CrossTenant-Id: 719f7151-364e-4e2e-83a8-f361c51431d7
+X-MS-Exchange-CrossTenant-OriginalArrivalTime: 30 Apr 2026 18:34:00.1715 (UTC)
+X-MS-Exchange-CrossTenant-Network-Message-Id:
+	d57a5056-a8ac-4833-5d69-08dea6e70c23
+X-MS-Exchange-Transport-CrossTenantHeadersStamped: MW4PR10MB5727
+
+--=-nIqOwhSv111arWttonJI7Q==
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Hello,
+
+The following submission has been created.
+
+Track Name: Artificial Intelligence and Data Science
+
+Paper ID: 1272
+
+Paper Title: utomating Manual Business Workflows in SaaS Products
+
+Abstract:
+SaaS platforms are doing a lot of things manually. Someone has to send the =
+task to the person follow up to get it approved run reports and make sure t=
+he data is up to date. When the platform is small this is okay.. When it ge=
+ts bigger all these manual tasks start to cause problems. There are some to=
+ols that can help with this like BPM systems, RPA tools and low-code platfo=
+rms.. They do not really work well for SaaS platforms. They were not made f=
+or this kind of work. Tools like Zapier and n8n are good for things but the=
+y are not good for complicated SaaS workflows. This paper is talking about =
+a way to automate SaaS platforms. It is based on rules and events. The syst=
+em has five parts: a Workflow Trigger Engine, a Rule Evaluation Module, a P=
+laybook Execution Engine, an Integration Layer and a Monitoring and Feedbac=
+k Module. To see how well it works we look at three things: how long it tak=
+es to do tasks how often there are errors and how many manual tasks are nee=
+ded. We compare our system to four tools. We also look at a real case study=
+ of a SaaS platform. Run some simulations. The simulations show that our sy=
+stem can reduce the time it takes to do tasks by 68-82% reduce errors from =
+20-25% to 5-8% and increase the number of tasks that can be done in an hour=
+ from 20 to, over 60.
+
+Created on: Thu, 30 Apr 2026 18:33:32 GMT
+
+Last Modified: Thu, 30 Apr 2026 18:33:32 GMT
+
+Authors:
+     - bhomya224.be22@chitkara.edu.in (Primary)
+     - chahat231.be22@chitkara.edu.in
+     - prerana2085.be22@chitkara.edu.in
+     - noovi2004.be22@chitkara.edu.in
+
+Secondary Subject Areas: Not Entered
+
+Submission Files:=20
+    Research_Paper_Humanized-2.pdf (615 Kb, Thu, 30 Apr 2026 18:32:23 GMT)
+
+Submission Questions Response:=20
+    1. Corresponding author Email ID
+            bhomya224.be22@chitkara.edu.in
+    2. Contact number with country code
+            +91 7018372065
+    3. Author's Information
+            Agreement accepted
+    4. Co-author's Consent
+            Agreement accepted
+    5. Certificate of Originality
+            Agreement accepted
+    6. Author's Consent
+            Agreement accepted
+    7. The use of artificial intelligence (AI)-generated text (e.g., by Cha=
+tGPT)
+            Agreement accepted
+
+Thanks,
+CMT team.
+
+
+Please do not reply to this email as it was generated from an email account=
+ that is not monitored.
+
+
+To stop receiving conference emails, you can check the 'Do not send me conf=
+erence email' box from your User Profile.
+
+Microsoft respects your privacy. To learn more, please read our <a href=3D'=
+https://go.microsoft.com/fwlink/?LinkId=3D521839'>Privacy Statement</a>.
+
+Microsoft Corporation
+One Microsoft Way
+Redmond, WA 98052=
+
+--=-nIqOwhSv111arWttonJI7Q==
+Content-Type: text/html; charset=utf-8
+Content-Id: <f62405b5-8b11-4ad3-9374-4a202df06ee9>
+Content-Transfer-Encoding: base64
+
+PCFET0NUWVBFIGh0bWw+PGh0bWw+PGhlYWQ+PG1ldGEgY2hhcnNldD0idXRmLTgiPjwvaGVhZD48
+Ym9keT48cHJlIHN0eWxlPSJmb250LWZhbWlseTogbW9ub3NwYWNlOyB3aGl0ZS1zcGFjZTogcHJl
+LXdyYXA7Ij5IZWxsbywKClRoZSBmb2xsb3dpbmcgc3VibWlzc2lvbiBoYXMgYmVlbiBjcmVhdGVk
+LgoKVHJhY2sgTmFtZTogQXJ0aWZpY2lhbCBJbnRlbGxpZ2VuY2UgYW5kIERhdGEgU2NpZW5jZQoK
+UGFwZXIgSUQ6IDEyNzIKClBhcGVyIFRpdGxlOiB1dG9tYXRpbmcgTWFudWFsIEJ1c2luZXNzIFdv
+cmtmbG93cyBpbiBTYWFTIFByb2R1Y3RzCgpBYnN0cmFjdDoKU2FhUyBwbGF0Zm9ybXMgYXJlIGRv
+aW5nIGEgbG90IG9mIHRoaW5ncyBtYW51YWxseS4gU29tZW9uZSBoYXMgdG8gc2VuZCB0aGUgdGFz
+ayB0byB0aGUgcGVyc29uIGZvbGxvdyB1cCB0byBnZXQgaXQgYXBwcm92ZWQgcnVuIHJlcG9ydHMg
+YW5kIG1ha2Ugc3VyZSB0aGUgZGF0YSBpcyB1cCB0byBkYXRlLiBXaGVuIHRoZSBwbGF0Zm9ybSBp
+cyBzbWFsbCB0aGlzIGlzIG9rYXkuLiBXaGVuIGl0IGdldHMgYmlnZ2VyIGFsbCB0aGVzZSBtYW51
+YWwgdGFza3Mgc3RhcnQgdG8gY2F1c2UgcHJvYmxlbXMuIFRoZXJlIGFyZSBzb21lIHRvb2xzIHRo
+YXQgY2FuIGhlbHAgd2l0aCB0aGlzIGxpa2UgQlBNIHN5c3RlbXMsIFJQQSB0b29scyBhbmQgbG93
+LWNvZGUgcGxhdGZvcm1zLi4gVGhleSBkbyBub3QgcmVhbGx5IHdvcmsgd2VsbCBmb3IgU2FhUyBw
+bGF0Zm9ybXMuIFRoZXkgd2VyZSBub3QgbWFkZSBmb3IgdGhpcyBraW5kIG9mIHdvcmsuIFRvb2xz
+IGxpa2UgWmFwaWVyIGFuZCBuOG4gYXJlIGdvb2QgZm9yIHRoaW5ncyBidXQgdGhleSBhcmUgbm90
+IGdvb2QgZm9yIGNvbXBsaWNhdGVkIFNhYVMgd29ya2Zsb3dzLiBUaGlzIHBhcGVyIGlzIHRhbGtp
+bmcgYWJvdXQgYSB3YXkgdG8gYXV0b21hdGUgU2FhUyBwbGF0Zm9ybXMuIEl0IGlzIGJhc2VkIG9u
+IHJ1bGVzIGFuZCBldmVudHMuIFRoZSBzeXN0ZW0gaGFzIGZpdmUgcGFydHM6IGEgV29ya2Zsb3cg
+VHJpZ2dlciBFbmdpbmUsIGEgUnVsZSBFdmFsdWF0aW9uIE1vZHVsZSwgYSBQbGF5Ym9vayBFeGVj
+dXRpb24gRW5naW5lLCBhbiBJbnRlZ3JhdGlvbiBMYXllciBhbmQgYSBNb25pdG9yaW5nIGFuZCBG
+ZWVkYmFjayBNb2R1bGUuIFRvIHNlZSBob3cgd2VsbCBpdCB3b3JrcyB3ZSBsb29rIGF0IHRocmVl
+IHRoaW5nczogaG93IGxvbmcgaXQgdGFrZXMgdG8gZG8gdGFza3MgaG93IG9mdGVuIHRoZXJlIGFy
+ZSBlcnJvcnMgYW5kIGhvdyBtYW55IG1hbnVhbCB0YXNrcyBhcmUgbmVlZGVkLiBXZSBjb21wYXJl
+IG91ciBzeXN0ZW0gdG8gZm91ciB0b29scy4gV2UgYWxzbyBsb29rIGF0IGEgcmVhbCBjYXNlIHN0
+dWR5IG9mIGEgU2FhUyBwbGF0Zm9ybS4gUnVuIHNvbWUgc2ltdWxhdGlvbnMuIFRoZSBzaW11bGF0
+aW9ucyBzaG93IHRoYXQgb3VyIHN5c3RlbSBjYW4gcmVkdWNlIHRoZSB0aW1lIGl0IHRha2VzIHRv
+IGRvIHRhc2tzIGJ5IDY4LTgyJSByZWR1Y2UgZXJyb3JzIGZyb20gMjAtMjUlIHRvIDUtOCUgYW5k
+IGluY3JlYXNlIHRoZSBudW1iZXIgb2YgdGFza3MgdGhhdCBjYW4gYmUgZG9uZSBpbiBhbiBob3Vy
+IGZyb20gMjAgdG8sIG92ZXIgNjAuCgpDcmVhdGVkIG9uOiBUaHUsIDMwIEFwciAyMDI2IDE4OjMz
+OjMyIEdNVAoKTGFzdCBNb2RpZmllZDogVGh1LCAzMCBBcHIgMjAyNiAxODozMzozMiBHTVQKCkF1
+dGhvcnM6CiAgICAgLSBiaG9teWEyMjQuYmUyMkBjaGl0a2FyYS5lZHUuaW4gKFByaW1hcnkpCiAg
+ICAgLSBjaGFoYXQyMzEuYmUyMkBjaGl0a2FyYS5lZHUuaW4KICAgICAtIHByZXJhbmEyMDg1LmJl
+MjJAY2hpdGthcmEuZWR1LmluCiAgICAgLSBub292aTIwMDQuYmUyMkBjaGl0a2FyYS5lZHUuaW4K
+ClNlY29uZGFyeSBTdWJqZWN0IEFyZWFzOiBOb3QgRW50ZXJlZAoKU3VibWlzc2lvbiBGaWxlczog
+CiAgICBSZXNlYXJjaF9QYXBlcl9IdW1hbml6ZWQtMi5wZGYgKDYxNSBLYiwgVGh1LCAzMCBBcHIg
+MjAyNiAxODozMjoyMyBHTVQpCgpTdWJtaXNzaW9uIFF1ZXN0aW9ucyBSZXNwb25zZTogCiAgICAx
+LiBDb3JyZXNwb25kaW5nIGF1dGhvciBFbWFpbCBJRAogICAgICAgICAgICBiaG9teWEyMjQuYmUy
+MkBjaGl0a2FyYS5lZHUuaW4KICAgIDIuIENvbnRhY3QgbnVtYmVyIHdpdGggY291bnRyeSBjb2Rl
+CiAgICAgICAgICAgICs5MSA3MDE4MzcyMDY1CiAgICAzLiBBdXRob3ImIzM5O3MgSW5mb3JtYXRp
+b24KICAgICAgICAgICAgQWdyZWVtZW50IGFjY2VwdGVkCiAgICA0LiBDby1hdXRob3ImIzM5O3Mg
+Q29uc2VudAogICAgICAgICAgICBBZ3JlZW1lbnQgYWNjZXB0ZWQKICAgIDUuIENlcnRpZmljYXRl
+IG9mIE9yaWdpbmFsaXR5CiAgICAgICAgICAgIEFncmVlbWVudCBhY2NlcHRlZAogICAgNi4gQXV0
+aG9yJiMzOTtzIENvbnNlbnQKICAgICAgICAgICAgQWdyZWVtZW50IGFjY2VwdGVkCiAgICA3LiBU
+aGUgdXNlIG9mIGFydGlmaWNpYWwgaW50ZWxsaWdlbmNlIChBSSktZ2VuZXJhdGVkIHRleHQgKGUu
+Zy4sIGJ5IENoYXRHUFQpCiAgICAgICAgICAgIEFncmVlbWVudCBhY2NlcHRlZAoKVGhhbmtzLApD
+TVQgdGVhbS48YnIgLz48YnIgLz48YnIgLz5QbGVhc2UgZG8gbm90IHJlcGx5IHRvIHRoaXMgZW1h
+aWwgYXMgaXQgd2FzIGdlbmVyYXRlZCBmcm9tIGFuIGVtYWlsIGFjY291bnQgdGhhdCBpcyBub3Qg
+bW9uaXRvcmVkLjxiciAvPjxiciAvPjxiciAvPlRvIHN0b3AgcmVjZWl2aW5nIGNvbmZlcmVuY2Ug
+ZW1haWxzLCB5b3UgY2FuIGNoZWNrIHRoZSAnRG8gbm90IHNlbmQgbWUgY29uZmVyZW5jZSBlbWFp
+bCcgYm94IGZyb20geW91ciBVc2VyIFByb2ZpbGUuPGJyIC8+PGJyIC8+TWljcm9zb2Z0IHJlc3Bl
+Y3RzIHlvdXIgcHJpdmFjeS4gVG8gbGVhcm4gbW9yZSwgcGxlYXNlIHJlYWQgb3VyIDxhIGhyZWY9
+J2h0dHBzOi8vZ28ubWljcm9zb2Z0LmNvbS9md2xpbmsvP0xpbmtJZD01MjE4MzknPlByaXZhY3kg
+U3RhdGVtZW50PC9hPi48YnIgLz48YnIgLz5NaWNyb3NvZnQgQ29ycG9yYXRpb248YnIgLz5PbmUg
+TWljcm9zb2Z0IFdheTxiciAvPlJlZG1vbmQsIFdBIDk4MDUyPC9wcmU+PGltZyBzcmM9J2h0dHBz
+Oi8vbXVjcC5hcGkuYWNjb3VudC5taWNyb3NvZnQuY29tL20vdjIvdj9kPUFJQUFDT0JLUUZWUERT
+QjRCUjRYQ0dLN0Y2RlQzS1BUTU5GRVg1RkJPS1pHVENLRjdHVkFVN0s3SVpORzNaMlBDR0dZSkpY
+RkZHN0JKT0U0VTJaNFFTVlhSTVVaVUVXQ1JSUEE0R0ZXUEtCT1hER09HN1ZVRElKUEpRQ0FWWVU3
+SFFNSFpGQkRLRjVNQ0pER0M0UE9PTzZHVVNNV1ZEWSZpPUFJQUFEWEJITE5PNFA1QkIyN1ZWWUdU
+SlgyUTI0WlZHUEtHSTVHWkpEWjMyVktYMjZNS0RRQVQ0RkFUWDNZTk1VRlg2RkNJSlBIRk0zSEFY
+SlNOVTZCM09MT0NaRVNRWTdaVUJXMzZPN0ZXUUtJSlpIM0JMNlVaRUtQNU9MNVJEVE5FVllFT05W
+MlhESEdNQlhKNFhRTFFVN1laSVpGSVZHVUNRUDVCSFAzQlhCNE9LRlhGS1cyU1ZJUkVWUzNFNEpQ
+NzRPNkRSQlNFSjdFT1JON0ZSUjZLTjNTVTJGM1FUV1pJVVoyRVhJTkpQWUZVRE9VTUo1QUlYNkw0
+QkxOU0FOQlQyUDVLNTJZUlZPS1JBTUNWTERPTlFJQURJVjRRJyB3aWR0aD0nMScgaGVpZ2h0PScx
+JyB0YWJpbmRleD0nLTEnIGFyaWEtaGlkZGVuPSd0cnVlJyBhbHQ9JycgLz48L2JvZHk+PC9odG1s
+PjwhLS0gY1Y6IEdHclpFU3NTeTBpbW1yaXYuMy4xLjEuNCAtLT4=
+
+--=-nIqOwhSv111arWttonJI7Q==--
